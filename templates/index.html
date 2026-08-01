@@ -6,6 +6,7 @@
   <title>ZESCO DLR Digital Twin</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>&#9889;</text></svg>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -34,6 +35,17 @@
   <main class="layout">
 
     <section class="content">
+
+      <div class="card map-card">
+        <h3 class="card-title"><i class="fa-solid fa-map-location-dot"></i> Live Site &amp; Power Infrastructure Map</h3>
+        <div id="map"></div>
+        <div class="map-footer">
+          <span>Simulated ZESCO line corridor (Copperbelt, Zambia)</span>
+          <a class="map-link" id="openinfraLink" href="https://openinframap.org/#15.89/-12.693845/28.184119" target="_blank" rel="noopener">
+            <i class="fa-solid fa-up-right-from-square"></i> Open in OpenInfraMap
+          </a>
+        </div>
+      </div>
 
       <div class="cards">
         <div class="card metric">
@@ -91,12 +103,33 @@
 
       <div class="grid-2">
         <div class="card chart-card">
+          <h3 class="card-title"><i class="fa-solid fa-cloud-sun"></i> 24-Hour Dynamic Rating Forecast</h3>
+          <div class="chart-wrap"><canvas id="forecastChart"></canvas></div>
+        </div>
+        <div class="card chart-card">
           <h3 class="card-title"><i class="fa-solid fa-ruler"></i> Sag &amp; Ground Clearance</h3>
           <div class="chart-wrap"><canvas id="sagChart"></canvas></div>
         </div>
+      </div>
+
+      <div class="grid-2">
         <div class="card chart-card">
-          <h3 class="card-title"><i class="fa-solid fa-cloud-sun"></i> 24-Hour Dynamic Rating Forecast</h3>
-          <div class="chart-wrap"><canvas id="forecastChart"></canvas></div>
+          <h3 class="card-title"><i class="fa-solid fa-brain"></i> AI Thermal Forecast (next 60 min)</h3>
+          <div class="chart-wrap"><canvas id="aiForecastChart"></canvas></div>
+        </div>
+        <div class="card ai-card">
+          <h3 class="card-title"><i class="fa-solid fa-lightbulb"></i> AI Insights</h3>
+          <div class="risk-box" id="riskBox">
+            <div class="risk-label">Overload risk (next 30 min)</div>
+            <div class="risk-track"><div class="risk-fill" id="riskFill"></div></div>
+            <div class="risk-meta">
+              <b id="riskBand">--</b>
+              <span id="riskScore"></span>
+            </div>
+          </div>
+          <ul class="insight-list" id="insightList">
+            <li class="event-empty">Computing insights...</li>
+          </ul>
         </div>
       </div>
 
@@ -125,6 +158,23 @@
         </ul>
       </div>
 
+      <div class="card chat-card">
+        <h3 class="card-title"><i class="fa-solid fa-robot"></i> AI Assistant</h3>
+        <div class="chat-body" id="chatBody">
+          <div class="chat-msg bot">Hi! I'm the DLR twin assistant. Ask me about overload risk, capacity, sag, temperature, anomalies or forecasts.</div>
+        </div>
+        <div class="chat-quick">
+          <button class="chip" data-q="What is the overload risk?">Risk</button>
+          <button class="chip" data-q="What should we do?">Action</button>
+          <button class="chip" data-q="Forecast the next hour">Forecast</button>
+          <button class="chip" data-q="Any sensor anomalies?">Anomalies</button>
+        </div>
+        <div class="chat-input">
+          <input type="text" id="chatInput" placeholder="Ask the assistant..." autocomplete="off">
+          <button class="btn btn-primary chat-send" id="chatSend"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+      </div>
+
       <div class="card">
         <h3 class="card-title"><i class="fa-solid fa-screwdriver-wrench"></i> Utilities</h3>
         <div class="util-actions">
@@ -145,6 +195,7 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

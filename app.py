@@ -18,6 +18,7 @@ Run on Render: gunicorn app:app
 import csv
 import io
 import math
+import os
 import random
 from datetime import datetime, timedelta, timezone
 
@@ -26,6 +27,7 @@ from apiflask import APIFlask, Schema, fields
 from flask import Response, render_template, request
 
 import database as db
+import ai_engine as ai
 from dlr_engine import WireDigitalTwin
 
 app = APIFlask(
@@ -120,7 +122,7 @@ def _seed_demo_data():
         ts = (now - timedelta(minutes=90 - i)).isoformat(timespec="seconds")
         ambient = 24.0 + 4.0 * math.sin(i / 8.0) + random.uniform(-1.0, 1.0)
         wind = max(0.2, 2.2 + 1.4 * math.sin(i / 5.0) + random.uniform(-0.6, 0.6))
-        current = max(0.5, 2.4 + 0.5 * math.sin(i / 6.0) + random.uniform(-0.3, 0.3))
+        current = max(0.5, 1.9 + 0.45 * math.sin(i / 6.0) + random.uniform(-0.2, 0.2))
         rec = twin.evaluate(current, ambient, wind)
         rec.update(
             {
@@ -354,6 +356,80 @@ def rating_forecast():
     }
 
 
+# ----------------------------------------------------------------------
+# AI / analytics endpoints
+# ----------------------------------------------------------------------
+def _recent_records(limit=60):
+    return db.history(limit)
+
+
+@app.get("/api/ai/insights")
+def ai_insights():
+    """Natural-language situational-awareness insights from the twin."""
+    return {"insights": ai.generate_insights(_recent_records(), twin)}
+
+
+@app.get("/api/ai/forecast")
+def ai_forecast():
+    """AI trend forecast of load, weather, temperature and dynamic rating."""
+    horizon = int(request.args.get("horizon", 60))
+    step = int(request.args.get("step", 5))
+    return ai.forecast(_recent_records(), twin, horizon_min=horizon, step_min=step) or {
+        "message": "Not enough history yet"
+    }
+
+
+@app.get("/api/ai/anomalies")
+def ai_anomalies():
+    """Detected sensor anomalies / physics mismatches."""
+    return {"anomalies": ai.detect_anomalies(_recent_records(), twin)}
+
+
+@app.get("/api/ai/risk")
+def ai_risk():
+    """Overload risk score & band over the forecast horizon."""
+    return ai.assess_risk(_recent_records(), twin)
+
+
+@app.get("/api/site")
+def site_info():
+    """Simulated line site / asset metadata for the map."""
+    return {
+        "name": ai.SITE_NAME,
+        "lat": ai.SITE_LAT,
+        "lon": ai.SITE_LON,
+        "zoom": 15.89,
+        "span_m": twin.span_length,
+        "openinframap_url": "https://openinframap.org/#15.89/-12.693845/28.184119",
+        "route": [
+            {"lat": -12.7035, "lon": 28.1745},
+            {"lat": -12.6988, "lon": 28.1790},
+            {"lat": ai.SITE_LAT, "lon": ai.SITE_LON},
+            {"lat": -12.6890, "lon": 28.1890},
+            {"lat": -12.6840, "lon": 28.1940},
+        ],
+    }
+
+
+class AssistantIn(Schema):
+    query = fields.String(required=True, metadata={"description": "Natural-language question"})
+
+
+class AssistantOut(Schema):
+    answer = fields.String()
+    mode = fields.String()
+
+
+@app.post("/api/ai/assistant")
+@app.input(AssistantIn)
+@app.output(AssistantOut)
+def ai_assistant(json_data: dict):
+    """Ask the AI assistant a natural-language question."""
+    answer = ai.assistant(json_data["query"], _recent_records(), twin)
+    mode = "llm" if os.environ.get("OPENAI_API_KEY") else "builtin"
+    return {"answer": answer, "mode": mode}
+
+
 @app.get("/api")
 def api_index():
     return {
@@ -372,6 +448,12 @@ def api_index():
             "dlr_calculate": "/api/dlr/calculate",
             "dlr_sag": "/api/dlr/sag",
             "forecast": "/api/forecast",
+            "ai_insights": "/api/ai/insights",
+            "ai_forecast": "/api/ai/forecast",
+            "ai_anomalies": "/api/ai/anomalies",
+            "ai_risk": "/api/ai/risk",
+            "ai_assistant": "POST /api/ai/assistant",
+            "site": "/api/site",
         },
     }
 

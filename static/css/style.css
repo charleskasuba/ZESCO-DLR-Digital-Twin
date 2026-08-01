@@ -259,3 +259,126 @@ input[type="range"] {
   padding: 18px;
   border-top: 1px solid var(--border);
 }
+
+/* ---------- Map ---------- */
+.map-card { padding: 0; overflow: hidden; }
+.map-card .card-title { padding: 16px 18px 12px; }
+#map { height: 340px; width: 100%; background: var(--bg-2); z-index: 1; }
+.map-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--muted);
+}
+.map-link { color: var(--info); text-decoration: none; font-weight: 600; }
+.map-link:hover { text-decoration: underline; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border);
+}
+.leaflet-container { font-family: inherit; }
+.leaflet-control-attribution { font-size: 10px; background: rgba(11,16,28,0.7); color: var(--muted); }
+.leaflet-control-attribution a { color: var(--info); }
+
+.twin-marker {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent), #ff6b5e);
+  color: #fff; border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+}
+
+/* ---------- AI card / risk gauge / insights ---------- */
+.ai-card { display: flex; flex-direction: column; }
+
+.risk-box {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.risk-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 8px; }
+.risk-track { height: 10px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+.risk-fill { height: 100%; width: 0%; border-radius: 999px; transition: width 0.6s ease, background 0.4s ease; background: var(--good); }
+.risk-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; }
+.risk-meta b.risk-low { color: var(--good); }
+.risk-meta b.risk-medium { color: var(--accent-2); }
+.risk-meta b.risk-high { color: var(--accent); }
+.risk-meta span { color: var(--muted); font-size: 12px; }
+
+.insight-list {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 300px; overflow-y: auto;
+}
+.insight-list::-webkit-scrollbar { width: 6px; }
+.insight-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.insight-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border-left: 3px solid var(--info);
+  font-size: 12.5px; line-height: 1.5;
+  color: var(--text);
+}
+.insight-item i { margin-top: 2px; }
+.insight-item.ok { border-left-color: var(--good); }
+.insight-item.warning { border-left-color: var(--accent-2); background: rgba(255, 176, 32, 0.06); }
+.insight-item.critical { border-left-color: var(--accent); background: rgba(230, 57, 70, 0.08); }
+
+/* ---------- AI assistant chat ---------- */
+.chat-card { display: flex; flex-direction: column; }
+.chat-body {
+  display: flex; flex-direction: column; gap: 8px;
+  height: 200px; overflow-y: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.chat-body::-webkit-scrollbar { width: 6px; }
+.chat-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.chat-msg {
+  max-width: 88%;
+  padding: 8px 11px;
+  border-radius: 12px;
+  font-size: 12.5px; line-height: 1.5;
+}
+.chat-msg.bot { align-self: flex-start; background: var(--card-hover); color: var(--text); border-bottom-left-radius: 4px; }
+.chat-msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--accent), #ff6b5e); color: #fff; border-bottom-right-radius: 4px; }
+
+.chat-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.chip {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.chip:hover { color: var(--info); border-color: var(--info); }
+
+.chat-input { display: flex; gap: 8px; }
+.chat-input input {
+  flex: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.chat-input input:focus { border-color: var(--info); }
+.chat-send { flex: 0 0 auto; padding: 9px 12px; }
+.chat-typing { color: var(--muted); font-style: italic; }

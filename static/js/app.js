@@ -9,7 +9,10 @@ const state = {
   latest: null,
   events: [],
   forecast: null,
+  ai: { insights: [], risk: null, forecast: null, anomalies: [], site: null },
   streamTimer: null,
+  map: null,
+  mapRoute: [],
 };
 
 const els = {
@@ -38,6 +41,14 @@ const els = {
   simCurrentV: document.getElementById("simCurrentV"),
   btnSend: document.getElementById("btnSend"),
   btnStream: document.getElementById("btnStream"),
+  riskFill: document.getElementById("riskFill"),
+  riskBand: document.getElementById("riskBand"),
+  riskScore: document.getElementById("riskScore"),
+  insightList: document.getElementById("insightList"),
+  chatBody: document.getElementById("chatBody"),
+  chatInput: document.getElementById("chatInput"),
+  chatSend: document.getElementById("chatSend"),
+  openinfraLink: document.getElementById("openinfraLink"),
 };
 
 const charts = {};
@@ -128,6 +139,25 @@ function initCharts() {
       },
     }),
   });
+
+  charts.aiForecast = new Chart(document.getElementById("aiForecastChart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "Forecast Load", data: [], borderColor: "#f7c948", fill: true, backgroundColor: "rgba(247,201,72,0.12)", tension: 0.3, pointRadius: 2, borderWidth: 2.5, yAxisID: "y" },
+        { label: "Forecast Dynamic Rating", data: [], borderColor: "#2ecc71", tension: 0.3, pointRadius: 2, borderWidth: 2.5, yAxisID: "y" },
+        { label: "Static Rating", data: [], borderColor: "#e63946", borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5, yAxisID: "y" },
+        { label: "Forecast Temp", data: [], borderColor: "#ff7849", tension: 0.3, pointRadius: 2, borderWidth: 1.5, yAxisID: "y2" },
+      ],
+    },
+    options: baseOptions({
+      scales: {
+        y: { title: { display: true, text: "Amperes (A)" }, suggestedMin: 0 },
+        y2: { position: "right", title: { display: true, text: "Temperature (deg C)" }, grid: { drawOnChartArea: false } },
+      },
+    }),
+  });
 }
 
 function updateCapacityChart() {
@@ -164,6 +194,60 @@ function updateForecastChart(fc) {
   charts.forecast.data.datasets[1].data = fc.dynamic_rating.map(() => fc.static_rating);
   charts.forecast.data.datasets[2].data = fc.ambient;
   charts.forecast.update("none");
+}
+
+function updateAiForecastChart(fc) {
+  if (!fc || !fc.labels) return;
+  charts.aiForecast.data.labels = fc.labels;
+  charts.aiForecast.data.datasets[0].data = fc.current_load;
+  charts.aiForecast.data.datasets[1].data = fc.dynamic_rating;
+  charts.aiForecast.data.datasets[2].data = fc.static_rating;
+  charts.aiForecast.data.datasets[3].data = fc.conductor_temp;
+  charts.aiForecast.update("none");
+}
+
+/* ----------------------- map ----------------------- */
+function initMap(site) {
+  if (!window.L || !site) return;
+  if (state.map) {
+    state.map.invalidateSize();
+    return;
+  }
+  const map = L.map("map", { zoomControl: true }).setView([site.lat, site.lon], 15.89);
+
+  const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors",
+  });
+  const infra = L.tileLayer("https://tiles.openinframap.org/telecoms,power,petroleum,water/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    opacity: 0.75,
+    attribution: "&copy; OpenInfraMap contributors",
+  });
+  osm.addTo(map);
+  infra.addTo(map);
+
+  L.control.layers({ "Street": osm, "Power infrastructure": infra }, null, { position: "topright" }).addTo(map);
+
+  const pts = site.route.map((p) => [p.lat, p.lon]);
+  L.polyline(pts, { color: "#ffb020", weight: 4, opacity: 0.9 }).addTo(map);
+
+  const icon = L.divIcon({
+    className: "",
+    html: '<div class="twin-marker"><i class="fa-solid fa-bolt"></i></div>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  });
+  L.marker([site.lat, site.lon], { icon: icon })
+    .addTo(map)
+    .bindPopup(
+      "<b>" + site.name + "</b><br>Lat " + site.lat.toFixed(5) + ", Lon " + site.lon.toFixed(5) +
+      "<br>Span: " + site.span_m + " m"
+    )
+    .openPopup();
+
+  state.map = map;
+  state.mapRoute = pts;
 }
 
 /* ----------------------- metrics & status ----------------------- */
@@ -225,17 +309,23 @@ function renderEvents(events) {
 /* ----------------------- data loading ----------------------- */
 async function loadAll() {
   try {
-    const [latest, history, events, forecast] = await Promise.all([
+    const [latest, history, events, forecast, site] = await Promise.all([
       getJSON("/api/telemetry/latest"),
       getJSON("/api/telemetry/history?limit=60"),
       getJSON("/api/telemetry/events?limit=20"),
       getJSON("/api/forecast"),
+      getJSON("/api/site"),
     ]);
 
     state.latest = latest;
     state.history = history;
     state.events = events;
     state.forecast = forecast;
+    state.ai.site = site;
+
+    if (site && site.openinframap_url) {
+      els.openinfraLink.href = site.openinframap_url;
+    }
 
     renderMetrics(latest);
     renderEvents(events);
@@ -243,6 +333,7 @@ async function loadAll() {
     updateThermalChart();
     updateSagChart();
     updateForecastChart(forecast);
+    initMap(site);
 
     els.liveBadge.classList.remove("offline");
     els.liveText.textContent = "Live";
@@ -252,6 +343,102 @@ async function loadAll() {
     els.liveText.textContent = "Offline";
     els.footerStatus.textContent = "Cannot reach backend - " + err.message;
     setStatus("", "Backend unreachable. Check that the Flask service is running.");
+  }
+}
+
+/* ----------------------- AI / analytics ----------------------- */
+async function loadAi() {
+  try {
+    const [insights, risk, fc, anomalies] = await Promise.all([
+      getJSON("/api/ai/insights"),
+      getJSON("/api/ai/risk"),
+      getJSON("/api/ai/forecast?horizon=60&step=5"),
+      getJSON("/api/ai/anomalies"),
+    ]);
+
+    state.ai.insights = insights.insights || [];
+    state.ai.risk = risk;
+    state.ai.forecast = fc;
+    state.ai.anomalies = anomalies.anomalies || [];
+
+    renderRisk(risk);
+    renderInsights();
+    updateAiForecastChart(fc);
+  } catch (err) {
+    /* AI is best-effort - do not disturb the core dashboard */
+  }
+}
+
+function renderRisk(risk) {
+  if (!risk) return;
+  els.riskFill.style.width = risk.score + "%";
+  els.riskFill.style.background =
+    risk.band === "HIGH" ? "#e63946" : risk.band === "MEDIUM" ? "#ffb020" : "#2ecc71";
+  els.riskBand.textContent = risk.band + " RISK";
+  els.riskBand.className = "risk-" + risk.band.toLowerCase();
+  els.riskScore.textContent = risk.score + "/100 over next " + risk.horizon_min + " min";
+}
+
+const insightIcons = {
+  ok: "fa-circle-check",
+  info: "fa-circle-info",
+  warning: "fa-triangle-exclamation",
+  critical: "fa-circle-exclamation",
+};
+
+function renderInsights() {
+  els.insightList.innerHTML = "";
+  const items = state.ai.insights.slice();
+
+  state.ai.anomalies.forEach((a) => {
+    items.push({ level: a.level === "high" ? "critical" : "warning", text: a.text });
+  });
+
+  if (!items.length) {
+    els.insightList.innerHTML = '<li class="event-empty">No insights yet</li>';
+    return;
+  }
+
+  items.slice(0, 6).forEach((ins) => {
+    const li = document.createElement("li");
+    li.className = "insight-item " + ins.level;
+    const icon = document.createElement("i");
+    icon.className = "fa-solid " + (insightIcons[ins.level] || insightIcons.info);
+    const span = document.createElement("span");
+    span.textContent = ins.text;
+    li.appendChild(icon);
+    li.appendChild(span);
+    els.insightList.appendChild(li);
+  });
+}
+
+/* ----------------------- AI assistant chat ----------------------- */
+function addChatMsg(text, who) {
+  const el = document.createElement("div");
+  el.className = "chat-msg " + who;
+  el.textContent = text;
+  els.chatBody.appendChild(el);
+  els.chatBody.scrollTop = els.chatBody.scrollHeight;
+  return el;
+}
+
+async function askAssistant(query) {
+  const q = (query || "").trim();
+  if (!q) return;
+  addChatMsg(q, "user");
+  const typing = addChatMsg("Thinking...", "bot typing");
+  try {
+    const res = await fetch("/api/ai/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q }),
+    });
+    const data = await res.json();
+    typing.textContent = data.answer;
+    typing.classList.remove("typing");
+  } catch (err) {
+    typing.textContent = "Sorry, I could not reach the assistant service.";
+    typing.classList.remove("typing");
   }
 }
 
@@ -328,8 +515,25 @@ function init() {
   els.btnSend.addEventListener("click", sendSimReading);
   els.btnStream.addEventListener("click", toggleStream);
 
+  // AI assistant chat
+  els.chatSend.addEventListener("click", () => {
+    askAssistant(els.chatInput.value);
+    els.chatInput.value = "";
+  });
+  els.chatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      askAssistant(els.chatInput.value);
+      els.chatInput.value = "";
+    }
+  });
+  document.querySelectorAll(".chip").forEach((chip) => {
+    chip.addEventListener("click", () => askAssistant(chip.dataset.q));
+  });
+
   loadAll();
   setInterval(loadAll, REFRESH_MS);
+  loadAi();
+  setInterval(loadAi, 6000);
 }
 
 document.addEventListener("DOMContentLoaded", init);
