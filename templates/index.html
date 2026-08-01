@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZESCO DLR Digital Twin</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>&#9889;</text></svg>">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><i class="fa-solid fa-bolt"></i></div>
+      <div class="brand-text">
+        <h1>ZESCO DLR Digital Twin</h1>
+        <p>Dynamic Line Rating &amp; Thermal Monitoring &middot; Proof-of-Concept</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="live-badge" id="liveBadge">
+        <span class="dot"></span><span id="liveText">Connecting</span>
+      </div>
+      <div class="clock" id="clock">--:--:--</div>
+    </div>
+  </header>
+
+  <div class="status-banner hidden" id="statusBanner">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    <span id="statusMessage"></span>
+  </div>
+
+  <main class="layout">
+
+    <section class="content">
+
+      <div class="cards">
+        <div class="card metric">
+          <div class="metric-icon icon-load"><i class="fa-solid fa-plug"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Line Current</span>
+            <span class="metric-value" id="mCurrent">-- A</span>
+            <span class="metric-sub" id="mCurrentSub">no data</span>
+          </div>
+        </div>
+        <div class="card metric">
+          <div class="metric-icon icon-static"><i class="fa-solid fa-lock"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Static Limit</span>
+            <span class="metric-value" id="mStatic">-- A</span>
+            <span class="metric-sub">fixed seasonal rating</span>
+          </div>
+        </div>
+        <div class="card metric">
+          <div class="metric-icon icon-dynamic"><i class="fa-solid fa-wave-square"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Dynamic Limit (DLR)</span>
+            <span class="metric-value" id="mDynamic">-- A</span>
+            <span class="metric-sub accent-good" id="mDynamicSub">--</span>
+          </div>
+        </div>
+        <div class="card metric">
+          <div class="metric-icon icon-temp"><i class="fa-solid fa-temperature-high"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Conductor Temp</span>
+            <span class="metric-value" id="mTemp">-- &deg;C</span>
+            <span class="metric-sub" id="mTempSub">max 75 &deg;C</span>
+          </div>
+        </div>
+        <div class="card metric">
+          <div class="metric-icon icon-sag"><i class="fa-solid fa-arrow-down-wide-short"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Sag / Clearance</span>
+            <span class="metric-value" id="mSag">-- m</span>
+            <span class="metric-sub accent-warn" id="mClearance">--</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card chart-card">
+          <h3 class="card-title"><i class="fa-solid fa-chart-line"></i> Capacity: Static vs Dynamic Rating</h3>
+          <div class="chart-wrap"><canvas id="capacityChart"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h3 class="card-title"><i class="fa-solid fa-temperature-low"></i> Thermal Behaviour &amp; Cooling</h3>
+          <div class="chart-wrap"><canvas id="thermalChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card chart-card">
+          <h3 class="card-title"><i class="fa-solid fa-ruler"></i> Sag &amp; Ground Clearance</h3>
+          <div class="chart-wrap"><canvas id="sagChart"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h3 class="card-title"><i class="fa-solid fa-cloud-sun"></i> 24-Hour Dynamic Rating Forecast</h3>
+          <div class="chart-wrap"><canvas id="forecastChart"></canvas></div>
+        </div>
+      </div>
+
+    </section>
+
+    <aside class="sidebar">
+
+      <div class="card sim-card">
+        <h3 class="card-title"><i class="fa-solid fa-gamepad"></i> Control &amp; Simulation</h3>
+        <label class="slider-label" for="simAmbient">Ambient Temp <b id="simAmbientV">25.0 &deg;C</b></label>
+        <input type="range" id="simAmbient" min="10" max="45" step="0.5" value="25">
+        <label class="slider-label" for="simWind">Wind Speed <b id="simWindV">2.0 m/s</b></label>
+        <input type="range" id="simWind" min="0.2" max="15" step="0.1" value="2.0">
+        <label class="slider-label" for="simCurrent">Current Load <b id="simCurrentV">2.5 A</b></label>
+        <input type="range" id="simCurrent" min="0" max="6" step="0.1" value="2.5">
+        <div class="sim-actions">
+          <button class="btn btn-primary" id="btnSend"><i class="fa-solid fa-paper-plane"></i> Send Reading</button>
+          <button class="btn btn-toggle" id="btnStream"><i class="fa-solid fa-play"></i> Auto Stream</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title"><i class="fa-solid fa-bell"></i> Alerts &amp; Events</h3>
+        <ul class="event-list" id="eventList">
+          <li class="event-empty">No events yet</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title"><i class="fa-solid fa-screwdriver-wrench"></i> Utilities</h3>
+        <div class="util-actions">
+          <a class="btn btn-ghost" href="/api/telemetry/export"><i class="fa-solid fa-file-csv"></i> Export CSV</a>
+          <a class="btn btn-ghost" href="/docs" target="_blank"><i class="fa-solid fa-book"></i> API Docs</a>
+        </div>
+        <p class="hint">
+          Data source: <span id="dataSource">ESP32 sensor node / simulator</span>
+        </p>
+      </div>
+
+    </aside>
+  </main>
+
+  <footer class="footer">
+    ZESCO DLR Digital Twin Prototype &middot; IEEE Std 738 thermal model &middot;
+    <span id="footerStatus">Not connected</span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
