@@ -40,21 +40,28 @@ app = APIFlask(
 app.config["SPEC_FORMAT"] = "json"
 
 # ----------------------------------------------------------------------
-# Single shared twin instance (IEEE 738 engine)
+# Active-line twin instance (IEEE 738 engine) calibrated to a real asset
 #
-# NOTE: R_ref=75 ohm is tuned for the lab-scale demo rig (thin heating
-# element + 5 A ACS712). Real HV conductors use milliohm resistances and
-# ratings in the hundreds of amps.
+# The twin reflects the currently selected transmission line. By default
+# this is the flagship 330 kV Kabwe - Pensulo backbone (ACSR Bison, 298 km,
+# 664 towers). Operators can switch lines via /api/lines/active.
 # ----------------------------------------------------------------------
-twin = WireDigitalTwin(
-    R_ref=75.0,
-    alpha=0.004,
-    max_temp=75.0,
-    emissivity=0.5,
-    static_rating=3.0,
-    span_length=150.0,
-    clearance_ref=8.0,
-)
+import network_assets as na
+
+_ACTIVE_LINE_ID = "kabwe_pen"
+
+
+def build_twin(line_id: str = None):
+    """Construct a WireDigitalTwin for a given line id (or the active one)."""
+    line_id = line_id or _ACTIVE_LINE_ID
+    line_ = na.line(line_id)
+    kw, spec = na.builds_twin(line_)
+    return WireDigitalTwin(**kw)
+
+
+twin = build_twin()
+
+_ACTIVE_LINE = na.line(_ACTIVE_LINE_ID)
 
 
 # ----------------------------------------------------------------------
@@ -118,12 +125,17 @@ def _seed_demo_data():
         return
 
     now = datetime.now(timezone.utc)
+    static = twin.static_rating
     seed_records = []
     for i in range(90):
         ts = (now - timedelta(minutes=90 - i)).isoformat(timespec="seconds")
         ambient = 24.0 + 4.0 * math.sin(i / 8.0) + random.uniform(-1.0, 1.0)
         wind = max(0.2, 2.2 + 1.4 * math.sin(i / 5.0) + random.uniform(-0.6, 0.6))
-        current = max(0.5, 1.9 + 0.45 * math.sin(i / 6.0) + random.uniform(-0.2, 0.2))
+        # Realistic load centred around 65% of the line's static rating
+        current = max(
+            0.05 * static,
+            static * (0.62 + 0.12 * math.sin(i / 6.0) + random.uniform(-0.05, 0.05)),
+        )
         rec = twin.evaluate(current, ambient, wind)
         rec.update(
             {
@@ -162,7 +174,65 @@ def health():
             "max_temp_c": twin.max_temp,
             "span_m": twin.span_length,
             "standard": "IEEE Std 738",
+            "active_line": _ACTIVE_LINE["name"],
+            "conductor": _ACTIVE_LINE["conductor"],
+            "voltage_kv": _ACTIVE_LINE["voltage_kv"],
         },
+    }
+
+
+# ----------------------------------------------------------------------
+# Line-asset registry
+# ----------------------------------------------------------------------
+@app.get("/api/lines")
+def list_lines():
+    """All registered ZESCO transmission line segments (330 kV + 66 kV)."""
+    lines = na.all_lines()
+    return {
+        "lines": lines,
+        "active_line": _ACTIVE_LINE_ID,
+        "voltage_levels": [330, 66],
+    }
+
+
+@app.get("/api/lines/<line_id>")
+def get_line(line_id: str):
+    """Details + calibrated twin parameters for a single line segment."""
+    try:
+        line_ = na.line(line_id)
+    except KeyError:
+        return {"error": f"Unknown line: {line_id}"}, 404
+    kw, spec = na.builds_twin(line_)
+    return {
+        "line": line_,
+        "conductor": spec,
+        "twin_params": kw,
+        "is_active": line_id == _ACTIVE_LINE_ID,
+    }
+
+
+@app.post("/api/lines/active")
+def set_active_line():
+    """Switch the digital twin to monitor a different line segment."""
+    line_id = (request.args.get("line_id") or (request.get_json(silent=True) or {}).get("line_id"))
+    if not line_id:
+        return {"error": "line_id is required"}, 400
+    try:
+        na.line(line_id)
+    except KeyError:
+        return {"error": f"Unknown line: {line_id}"}, 404
+
+    global twin, _ACTIVE_LINE, _ACTIVE_LINE_ID
+    _ACTIVE_LINE_ID = line_id
+    _ACTIVE_LINE = na.line(line_id)
+    twin = build_twin(line_id)
+    db.insert_event("INFO", f"Active line switched to {_ACTIVE_LINE['name']}")
+    return {
+        "active_line": _ACTIVE_LINE_ID,
+        "line": _ACTIVE_LINE,
+        "static_rating_a": twin.static_rating,
+        "max_temp_c": twin.max_temp,
+        "span_m": twin.span_length,
     }
 
 
@@ -478,6 +548,9 @@ def api_index():
             "dlr_calculate": "/api/dlr/calculate",
             "dlr_sag": "/api/dlr/sag",
             "forecast": "/api/forecast",
+            "lines": "/api/lines",
+            "get_line": "/api/lines/<line_id>",
+            "set_active_line": "POST /api/lines/active",
             "ai_insights": "/api/ai/insights",
             "ai_forecast": "/api/ai/forecast",
             "ai_anomalies": "/api/ai/anomalies",

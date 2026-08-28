@@ -13,6 +13,9 @@ const state = {
   streamTimer: null,
   map: null,
   mapRoute: [],
+  lines: [],
+  activeLineId: null,
+  activeRating: null,
 };
 
 const els = {
@@ -49,6 +52,13 @@ const els = {
   chatInput: document.getElementById("chatInput"),
   chatSend: document.getElementById("chatSend"),
   openinfraLink: document.getElementById("openinfraLink"),
+  lineSelect: document.getElementById("lineSelect"),
+  lineMeta: document.getElementById("lineMeta"),
+  lineConductor: document.getElementById("lineConductor"),
+  lineVoltage: document.getElementById("lineVoltage"),
+  lineLength: document.getElementById("lineLength"),
+  lineStatic: document.getElementById("lineStatic"),
+  btnLineApply: document.getElementById("btnLineApply"),
 };
 
 const charts = {};
@@ -317,12 +327,13 @@ function renderEvents(events) {
 /* ----------------------- data loading ----------------------- */
 async function loadAll() {
   try {
-    const [latest, history, events, forecast, site] = await Promise.all([
+    const [latest, history, events, forecast, site, health] = await Promise.all([
       getJSON("/api/telemetry/latest"),
       getJSON("/api/telemetry/history?limit=60"),
       getJSON("/api/telemetry/events?limit=20"),
       getJSON("/api/forecast"),
       getJSON("/api/site"),
+      getJSON("/api/health"),
     ]);
 
     state.latest = latest;
@@ -330,6 +341,7 @@ async function loadAll() {
     state.events = events;
     state.forecast = forecast;
     state.ai.site = site;
+    state.activeRating = health.twin && health.twin.static_rating_a;
 
     if (site && site.openinframap_url) {
       els.openinfraLink.href = site.openinframap_url;
@@ -343,6 +355,19 @@ async function loadAll() {
     updateForecastChart(forecast);
     initMap(site);
 
+    // Scale simulator slider to the active line's real rating
+    if (state.activeRating) {
+      const max = Math.max(500, Math.ceil(state.activeRating * 1.5 / 50) * 50);
+      els.simCurrent.max = max;
+      if (parseFloat(els.simCurrent.value) > max) {
+        els.simCurrent.value = Math.round(max * 0.6);
+        els.simCurrentV.textContent = els.simCurrent.value + " A";
+      }
+    }
+    if (state.lines && state.activeLineId) {
+      renderLineMeta(state.activeLineId);
+    }
+
     els.liveBadge.classList.remove("offline");
     els.liveText.textContent = "Live";
     els.footerStatus.textContent = "Connected to backend";
@@ -351,6 +376,65 @@ async function loadAll() {
     els.liveText.textContent = "Offline";
     els.footerStatus.textContent = "Cannot reach backend - " + err.message;
     setStatus("", "Backend unreachable. Check that the Flask service is running.");
+  }
+}
+
+/* ----------------------- line selector ----------------------- */
+async function loadLines() {
+  try {
+    const data = await getJSON("/api/lines");
+    state.lines = data.lines || [];
+    state.activeLineId = data.active_line;
+
+    const sel = els.lineSelect;
+    const prev = sel.value;
+    sel.innerHTML = "";
+    state.lines.forEach((ln) => {
+      const opt = document.createElement("option");
+      opt.value = ln.id;
+      opt.textContent =
+        ln.voltage_kv + " kV  /  " + ln.name + "  (" + ln.conductor + ")";
+      sel.appendChild(opt);
+    });
+    if (prev && [...sel.options].some((o) => o.value === prev)) {
+      sel.value = prev;
+    } else {
+      sel.value = state.activeLineId;
+    }
+
+    renderLineMeta(data.active_line);
+    sel.addEventListener("change", () => {
+      els.btnLineApply.disabled = sel.value === state.activeLineId;
+    });
+  } catch (err) {
+    /* line registry is best-effort */
+  }
+}
+
+function renderLineMeta(lineId) {
+  const ln = (state.lines || []).find((x) => x.id === lineId);
+  if (!ln) return;
+  els.lineConductor.textContent = ln.conductor;
+  els.lineVoltage.textContent = ln.voltage_kv + " kV";
+  els.lineLength.textContent = (ln.length_km ? ln.length_km : "?") + " km";
+  // Static rating from the active twin (health tells us the rating)
+  els.lineStatic.textContent = (state.activeRating || "?") + " A";
+}
+
+async function applyLine() {
+  const lineId = els.lineSelect.value;
+  els.btnLineApply.disabled = true;
+  try {
+    const res = await fetch("/api/lines/active?line_id=" + encodeURIComponent(lineId), {
+      method: "POST",
+    });
+    if (!res.ok) throw new Error("apply failed: " + res.status);
+    await loadAll();
+    setStatus("", "Active line set to: " + (els.lineSelect.selectedOptions[0] || {}).textContent);
+    els.dataSource.textContent = "simulator";
+  } catch (err) {
+    setStatus("", "Failed to apply line: " + err.message);
+    els.btnLineApply.disabled = false;
   }
 }
 
@@ -522,6 +606,7 @@ function init() {
 
   els.btnSend.addEventListener("click", sendSimReading);
   els.btnStream.addEventListener("click", toggleStream);
+  els.btnLineApply.addEventListener("click", applyLine);
 
   // AI assistant chat
   els.chatSend.addEventListener("click", () => {
@@ -540,6 +625,7 @@ function init() {
 
   loadAll();
   setInterval(loadAll, REFRESH_MS);
+  loadLines();
   loadAi();
   setInterval(loadAi, 6000);
 }

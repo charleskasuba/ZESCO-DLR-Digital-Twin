@@ -188,6 +188,23 @@ body {
 .source-badge.synth { background: rgba(167, 139, 250, 0.15); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.4); }
 .chart-wrap { position: relative; height: 300px; }
 
+/* ---------- Line selector ---------- */
+.line-select {
+  width: 100%; padding: 8px 10px; border-radius: 8px;
+  background: var(--card); color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px; margin-bottom: 10px;
+}
+.line-meta { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 12px; }
+.line-meta-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; color: var(--muted);
+}
+.line-meta-row b { color: var(--text); font-weight: 600; }
+.line-actions { display: flex; }
+.line-actions .btn { width: 100%; }
+.line-actions .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ---------- Sidebar ---------- */
 .sidebar { display: flex; flex-direction: column; gap: 18px; }
 

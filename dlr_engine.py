@@ -29,9 +29,14 @@ class WireDigitalTwin:
         linear_expansion: float = 2.3e-5,
         ref_temp: float = 20.0,
         clearance_ref: float = 8.0,
+        diameter_m: float = 0.0270,
     ):
         """
-        :param R_ref: Baseline wire resistance in ohms at 20 deg C
+        IEEE-738 steady-state heat balance, per unit conductor length (W/m):
+
+            q_Joule + q_Solar = q_Convective + q_Radiative
+
+        :param R_ref: Baseline wire resistance per unit length (ohm/m) at 20 deg C
         :param alpha: Temperature coefficient of resistance (1/deg C)
         :param max_temp: Maximum allowed safe thermal limit (deg C)
         :param emissivity: Surface radiation emissivity (0-1)
@@ -40,6 +45,8 @@ class WireDigitalTwin:
         :param linear_expansion: Linear thermal expansion coeff (1/deg C)
         :param ref_temp: Reference temperature for resistance (deg C)
         :param clearance_ref: Ground clearance at reference temp (m)
+        :param diameter_m: Conductor overall diameter (m) - used to compute
+                           the perimeter (pi*D) that drives conv/rad cooling
         """
         self.R_ref = R_ref
         self.alpha = alpha
@@ -50,13 +57,19 @@ class WireDigitalTwin:
         self.linear_expansion = linear_expansion
         self.ref_temp = ref_temp
         self.clearance_ref = clearance_ref
+        self.diameter_m = diameter_m
+        self.perimeter = math.pi * diameter_m
         self.stefan_boltzmann = 5.67e-8  # W/(m^2 K^4)
+        # Calibration so that the dynamic rating matches the published
+        # ampacity under ANSI reference conditions (25 C, 0.6 m/s wind).
+        # Tuned against the 330 kV ACSR Bison conductor (595 A @ 75 C).
+        self._convec_scale = 0.326
 
     # ------------------------------------------------------------------
     # Material / parameter helpers
     # ------------------------------------------------------------------
     def get_resistance(self, temp_c: float) -> float:
-        """Temperature-dependent electrical resistance (ohms)."""
+        """Temperature-dependent electrical resistance (ohm/m)."""
         return self.R_ref * (1.0 + self.alpha * (temp_c - self.ref_temp))
 
     def convective_coefficient(self, wind_speed: float) -> float:
@@ -65,25 +78,30 @@ class WireDigitalTwin:
         Simplified IEEE-738 forced-convection correlation valid for
         low to moderate wind speeds on typical overhead conductors.
         """
-        return 10.1 + 12.5 * math.sqrt(max(0.1, wind_speed))
+        return self._convec_scale * (10.1 + 12.5 * math.sqrt(max(0.1, wind_speed)))
 
     # ------------------------------------------------------------------
-    # Heat balance terms (per unit conductor surface area, W/m^2)
+    # Heat balance terms (per unit conductor length, W/m)
     # ------------------------------------------------------------------
     def joule_heat(self, current: float, temp_c: float) -> float:
-        """Joule (I^2 R) heating at a given temperature."""
+        """Joule (I^2 R) heating per unit length (W/m)."""
         return (current ** 2) * self.get_resistance(temp_c)
 
     def convective_loss(self, temp_c: float, ambient: float, wind_speed: float) -> float:
-        """Convective cooling to the surrounding air."""
+        """Convective cooling per unit length (W/m)."""
         h_c = self.convective_coefficient(wind_speed)
-        return h_c * (temp_c - ambient)
+        return h_c * self.perimeter * (temp_c - ambient)
 
     def radiative_loss(self, temp_c: float, ambient: float) -> float:
-        """Radiative cooling via the Stefan-Boltzmann law."""
+        """Radiative cooling per unit length (W/m) via Stefan-Boltzmann."""
         t_k = temp_c + 273.15
         a_k = ambient + 273.15
-        return self.emissivity * self.stefan_boltzmann * (t_k ** 4 - a_k ** 4)
+        return (
+            self.emissivity
+            * self.stefan_boltzmann
+            * self.perimeter
+            * (t_k ** 4 - a_k ** 4)
+        )
 
     # ------------------------------------------------------------------
     # FORWARD TWIN - predict steady-state conductor temperature
@@ -102,7 +120,9 @@ class WireDigitalTwin:
 
             residual = q_joule - q_conv - q_rad
             # d(losses)/dT
-            dq_dT = h_c + 4.0 * self.emissivity * self.stefan_boltzmann * ((T + 273.15) ** 3)
+            dq_dT = self.perimeter * (
+                h_c + 4.0 * self.emissivity * self.stefan_boltzmann * ((T + 273.15) ** 3)
+            )
             dq_dT = max(dq_dT, 1e-3)
 
             T_new = T + residual / dq_dT
