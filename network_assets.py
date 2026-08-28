@@ -139,9 +139,144 @@ LINES_66KV = [
 # Accessors
 # ----------------------------------------------------------------------
 
+# Substation coordinates (lat, lon) for key ZESCO nodes. Used to render
+# each line segment's real corridor on the map. Approximate WGS84 points
+# for the main 330 kV / 66 kV substations in Zambia.
+SUBSTATIONS = {
+    "Kabwe":        (-14.4440, 28.4450),
+    "Kabwe Step":   (-14.4300, 28.4600),
+    "Kabwe Stepdown": (-14.4300, 28.4600),
+    "Kitwe":        (-12.8024, 28.2132),
+    "Luano":        (-12.9000, 28.2500),
+    "Pensulo":      (-13.1700, 30.0700),
+    "Serenje":      (-13.2300, 30.2300),
+    "Kasama":       (-10.1860, 31.1840),
+    "Mpika":        (-11.0610, 31.4460),
+    "Mbala":        (-8.8390, 31.4460),
+    "Mansa":        (-11.1990, 28.8930),
+    "Kasama":       (-10.1860, 31.1840),
+    "Chinsali":     (-10.5420, 32.0750),
+    "Isoka":        (-10.1600, 32.6320),
+    "Nakonde":      (-9.3210, 32.7620),
+    "Kawambwa":     (-9.7860, 29.0790),
+    "Mporokoso":    (-9.3790, 30.1320),
+    "Luwingu":      (-10.2400, 29.9060),
+    "Lunzua":       (-9.0000, 31.5000),
+    "Nkamba":       (-8.7000, 31.1500),
+    "Sumbawanga":   (-8.5500, 30.5500),
+    "Chambasitu":   (-10.5500, 29.6500),
+    "Musonda":      (-11.0000, 29.5000),
+    "Chishimba":    (-10.1500, 30.8500),
+    "Mfuwe":        (-13.0000, 32.0500),
+    "Chipata":      (-13.6400, 32.6500),
+    "Chipata West": (-13.6200, 32.6100),
+    "Msoro":        (-13.1000, 32.0000),
+    "Azele":        (-13.3000, 32.3000),
+    "Mkushi":       (-13.6200, 29.4000),
+    "Kanona":       (-13.3500, 30.7000),
+    "Lusiwasi":     (-13.3000, 30.0000),
+    "Mupepetwe":    (-13.5000, 29.8000),
+    "Solwezi":      (-12.1800, 26.4000),
+    "Kasempa":      (-13.4600, 25.8400),
+    "Lumwana":      (-12.2600, 25.8000),
+    "Kalumbila":    (-12.3500, 25.5000),
+    "Kansanshi":    (-12.1200, 26.4200),
+    "Nambala":      (-12.3000, 27.5000),
+    "Leopards":     (-15.4800, 28.1900),
+    "Leopard":      (-15.4800, 28.1900),
+    "Leopard's":    (-15.4800, 28.1900),
+    "Lusaka":       (-15.3875, 28.3228),
+    "Kafue":        (-15.7690, 28.1810),
+    "Muzuma":       (-15.2000, 27.9000),
+    "Kariba":       (-16.5220, 28.7610),
+    "Kafue Gorge":  (-15.8100, 28.4000),
+    "Victoria":     (-17.9250, 25.8560),
+    "Maamba":       (-17.3700, 27.1400),
+    "Chambishi":    (-12.6300, 28.0700),
+    "Chambeshi":    (-12.6300, 28.0700),
+    "Muzuma":       (-15.2000, 27.9000),
+    "Kafue Town":   (-15.7690, 28.1810),
+    "Ndeke":        (-12.9000, 28.1000),
+    "Mwambashi":    (-12.8500, 28.0500),
+    "New Scaw":     (-12.8800, 28.1200),
+    "Nkana":        (-12.8100, 28.2100),
+    "Luangwa":      (-13.5000, 30.0000),
+    "Maposa":       (-12.7800, 28.2300),
+    "Bwana":        (-12.8000, 28.2400),
+    "Mushili":      (-12.7900, 28.2200),
+    "Kazungula":    (-17.7920, 25.2670),
+    "Sesheke":      (-17.5050, 24.2980),
+    "Senanga":      (-16.1320, 23.2660),
+    "Mongu":        (-15.2540, 23.1280),
+    "Kaoma":        (-14.8000, 24.8000),
+    "Kasane":       (-17.8000, 25.1500),
+    "Chilanga":     (-15.5300, 28.2500),
+    "Chinsali":     (-10.5420, 32.0750),
+    "Mwinilunga":   (-11.7360, 24.4280),
+}
+
+
+def substation_coords(name: str):
+    """Return (lat, lon) for a substation name, or None if unknown."""
+    if name in SUBSTATIONS:
+        return SUBSTATIONS[name]
+    # Tolerant match: try case-insensitive and partial prefix
+    low = name.lower()
+    for key, coords in SUBSTATIONS.items():
+        if key.lower() in low or low in key.lower():
+            return coords
+    return None
+
+
+def _route_endpoints(name: str):
+    """Extract two endpoint names from a line's display name.
+
+    The line names follow the form '<From> - <To>' with optional suffixes
+    like '1', '2', '3', '(Charged at 220 kV)', 'Line', 'T-Off'.
+    """
+    base = name.split("(")[0].strip()
+    parts = base.split("-")
+    if len(parts) < 2:
+        return None
+    from_name = parts[0].strip()
+    to_name = parts[-1].strip().split(" Line")[0].strip()
+    # Strip trailing single digits (circuit numbers)
+    import re
+    to_name = re.sub(r"\s*\d+$", "", to_name).strip()
+    from_name = re.sub(r"\s*\d+$", "", from_name).strip()
+    from_c = substation_coords(from_name)
+    to_c = substation_coords(to_name)
+    if from_c and to_c:
+        return from_c, to_c
+    return None
+
+
+def route_for(line_) -> list:
+    """Build a [lat, lon] polyline for a line segment's real corridor.
+
+    Uses the line's endpoint substation coordinates. For long lines
+    (>120 km) an intermediate waypoint is inserted near the midpoint to
+    suggest the geodetic path; short lines get a straight two-point line.
+    """
+    ep = _route_endpoints(line_["name"])
+    if not ep:
+        return None
+    from_c, to_c = ep
+    lat1, lon1 = from_c
+    lat2, lon2 = to_c
+    if line_.get("length_km", 0) >= 120:
+        mid_lat = (lat1 + lat2) / 2.0
+        mid_lon = (lon1 + lon2) / 2.0
+        return [[lat1, lon1], [mid_lat, mid_lon], [lat2, lon2]]
+    return [[lat1, lon1], [lat2, lon2]]
+
+
 def all_lines() -> list:
-    """All registered line segments (330 kV + 66 kV)."""
-    return LINES_330KV + LINES_66KV
+    """All registered line segments (330 kV + 66 kV) with their routes."""
+    lines = LINES_330KV + LINES_66KV
+    for ln in lines:
+        ln.setdefault("route", route_for(ln))
+    return lines
 
 
 def lines_by_voltage(voltage_kv: int) -> list:
@@ -150,10 +285,12 @@ def lines_by_voltage(voltage_kv: int) -> list:
 
 
 def line(line_id: str) -> dict:
-    """Look up a single line segment by id."""
+    """Look up a single line segment by id (with its route)."""
     for ln in all_lines():
         if ln["id"] == line_id:
-            return dict(ln)
+            result = dict(ln)
+            result["route"] = route_for(ln)
+            return result
     raise KeyError(f"Unknown line: {line_id}")
 
 

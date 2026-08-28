@@ -13,6 +13,10 @@ const state = {
   streamTimer: null,
   map: null,
   mapRoute: [],
+  lineLayer: null,
+  startMarker: null,
+  endMarker: null,
+  drawnLineId: null,
   lines: [],
   activeLineId: null,
   activeRating: null,
@@ -52,6 +56,7 @@ const els = {
   chatInput: document.getElementById("chatInput"),
   chatSend: document.getElementById("chatSend"),
   openinfraLink: document.getElementById("openinfraLink"),
+  mapCorridor: document.getElementById("mapCorridor"),
   lineSelect: document.getElementById("lineSelect"),
   lineMeta: document.getElementById("lineMeta"),
   lineConductor: document.getElementById("lineConductor"),
@@ -225,46 +230,94 @@ function updateAiForecastChart(fc) {
 }
 
 /* ----------------------- map ----------------------- */
+const lineColors = {
+  330: "#ff4d4d",
+  220: "#3ddc84",
+  132: "#b47fff",
+  88: "#ffe14d",
+  66: "#38bdf8",
+};
+
+function voltageColor(kv) {
+  return lineColors[kv] || "#ffb020";
+}
+
 function initMap(site) {
   if (!window.L || !site) return;
-  if (state.map) {
-    state.map.invalidateSize();
-    return;
+
+  const pts = (site.route || []).map((p) => [p.lat, p.lon]);
+  const color = voltageColor(site.voltage_kv);
+
+  // First time: create the map and tile layers
+  if (!state.map) {
+    const map = L.map("map", { zoomControl: true }).setView(
+      [site.lat, site.lon],
+      site.zoom || 6
+    );
+    const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    });
+    const infra = L.tileLayer(
+      "https://tiles.openinframap.org/telecoms,power,petroleum,water/{z}/{x}/{y}.png",
+      { maxZoom: 19, opacity: 0.75, attribution: "&copy; OpenInfraMap contributors" }
+    );
+    osm.addTo(map);
+    infra.addTo(map);
+    L.control
+      .layers({ "Street": osm, "Power infrastructure": infra }, null, { position: "topright" })
+      .addTo(map);
+    state.map = map;
+    state.lineLayer = L.layerGroup().addTo(map);
+    state.startMarker = null;
+    state.endMarker = null;
+    state.dashDrawn = false;
   }
-  const map = L.map("map", { zoomControl: true }).setView([site.lat, site.lon], 15.89);
 
-  const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors",
-  });
-  const infra = L.tileLayer("https://tiles.openinframap.org/telecoms,power,petroleum,water/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    opacity: 0.75,
-    attribution: "&copy; OpenInfraMap contributors",
-  });
-  osm.addTo(map);
-  infra.addTo(map);
+  // Recentre ONLY when the active line changed (keep user's pan otherwise)
+  const lineChanged = state.drawnLineId !== site.line_id;
+  state.drawnLineId = site.line_id;
 
-  L.control.layers({ "Street": osm, "Power infrastructure": infra }, null, { position: "topright" }).addTo(map);
+  // Redraw the route polyline + endpoint markers for the active line
+  state.lineLayer.clearLayers();
+  if (pts.length >= 2) {
+    L.polyline(pts, { color: color, weight: 4, opacity: 0.95 }).addTo(state.lineLayer);
+  }
 
-  const pts = site.route.map((p) => [p.lat, p.lon]);
-  L.polyline(pts, { color: "#ffb020", weight: 4, opacity: 0.9 }).addTo(map);
+  const divIcon = (label) =>
+    L.divIcon({
+      className: "",
+      html: '<div class="twin-marker" style="background:' + color + '">' + label + "</div>",
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    });
 
-  const icon = L.divIcon({
-    className: "",
-    html: '<div class="twin-marker"><i class="fa-solid fa-bolt"></i></div>',
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
-  L.marker([site.lat, site.lon], { icon: icon })
-    .addTo(map)
-    .bindPopup(
-      "<b>" + site.name + "</b><br>Lat " + site.lat.toFixed(5) + ", Lon " + site.lon.toFixed(5) +
-      "<br>Span: " + site.span_m + " m"
-    )
-    .openPopup();
+  const popupHtml =
+    "<b>" + site.name + "</b><br>Voltage: " + (site.voltage_kv || "?") + " kV" +
+    "<br>Conductor: " + (site.conductor || "?") +
+    "<br>Length: " + (site.length_km || "?") + " km" +
+    "<br>Static rating: " + (site.static_rating_a || "?") + " A" +
+    "<br>Span: " + site.span_m + " m";
 
-  state.map = map;
+  if (pts.length) {
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    state.startMarker = L.marker(first, { icon: divIcon("A") })
+      .addTo(state.lineLayer)
+      .bindPopup(popupHtml);
+    // Only add an end marker distinct from start for line routes
+    if (pts.length >= 2) {
+      state.endMarker = L.marker(last, { icon: divIcon("B") })
+        .addTo(state.lineLayer)
+        .bindPopup(popupHtml);
+    }
+  }
+
+  // Recentre on the (possibly changed) route only when the line changed
+  if (lineChanged) {
+    state.map.setView([site.lat, site.lon], site.zoom || 6);
+  }
+  state.map.invalidateSize();
   state.mapRoute = pts;
 }
 
@@ -345,6 +398,11 @@ async function loadAll() {
 
     if (site && site.openinframap_url) {
       els.openinfraLink.href = site.openinframap_url;
+    }
+    if (els.mapCorridor && site && site.name) {
+      const kv = site.voltage_kv ? site.voltage_kv + " kV" : "";
+      els.mapCorridor.textContent =
+        site.name + " " + kv + " corridor (" + (site.length_km || "?") + " km)";
     }
 
     renderMetrics(latest);

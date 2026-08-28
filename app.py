@@ -493,21 +493,46 @@ def ai_risk():
 
 @app.get("/api/site")
 def site_info():
-    """Simulated line site / asset metadata for the map."""
+    """Active line site / asset metadata for the map.
+
+    Reflects the currently selected line segment: its corridor route,
+    conductor, voltage, static rating and span.
+    """
+    route = _ACTIVE_LINE.get("route") or [
+        {"lat": ai.SITE_LAT, "lon": ai.SITE_LON},
+    ]
+    # Center the map on the rough centroid of the route
+    lats = [p[0] for p in route]
+    lons = [p[1] for p in route]
+    c_lat = sum(lats) / len(lats)
+    c_lon = sum(lons) / len(lons)
+    # Zoom based on line length: longer lines need a wider view
+    length_km = _ACTIVE_LINE.get("length_km") or 0
+    if length_km >= 300:
+        zoom = 5
+    elif length_km >= 150:
+        zoom = 6
+    elif length_km >= 60:
+        zoom = 7
+    else:
+        zoom = 8
+    route_serialisable = [{"lat": p[0], "lon": p[1]} for p in route]
+
     return {
-        "name": ai.SITE_NAME,
-        "lat": ai.SITE_LAT,
-        "lon": ai.SITE_LON,
-        "zoom": 15.89,
+        "name": _ACTIVE_LINE["name"],
+        "line_id": _ACTIVE_LINE_ID,
+        "voltage_kv": _ACTIVE_LINE["voltage_kv"],
+        "conductor": _ACTIVE_LINE["conductor"],
+        "length_km": length_km,
+        "towers": _ACTIVE_LINE.get("towers"),
+        "commissioned": _ACTIVE_LINE.get("commissioned"),
+        "lat": c_lat,
+        "lon": c_lon,
+        "zoom": zoom,
         "span_m": twin.span_length,
-        "openinframap_url": "https://openinframap.org/#15.89/-12.693845/28.184119",
-        "route": [
-            {"lat": -12.7035, "lon": 28.1745},
-            {"lat": -12.6988, "lon": 28.1790},
-            {"lat": ai.SITE_LAT, "lon": ai.SITE_LON},
-            {"lat": -12.6890, "lon": 28.1890},
-            {"lat": -12.6840, "lon": 28.1940},
-        ],
+        "static_rating_a": twin.static_rating,
+        "openinframap_url": f"https://openinframap.org/#{zoom}/{c_lat}/{c_lon}",
+        "route": route_serialisable,
     }
 
 
