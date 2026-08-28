@@ -28,6 +28,7 @@ from flask import Response, render_template, request
 
 import database as db
 import ai_engine as ai
+import weather_service as wx
 from dlr_engine import WireDigitalTwin
 
 app = APIFlask(
@@ -322,37 +323,66 @@ def dlr_sag():
 # ----------------------------------------------------------------------
 @app.get("/api/forecast")
 def rating_forecast():
-    """Simulated 24-hour DLR outlook for planning / operator awareness.
+    """24-hour DLR outlook for planning / operator awareness.
 
-    Builds a synthetic diurnal weather profile and computes the resulting
-    dynamic rating hour-by-hour alongside the fixed static rating.
+    Uses a real weather forecast from Open-Meteo when available, and
+    falls back to a synthetic diurnal profile if the API is unreachable.
     """
     now = datetime.now(timezone.utc)
     hours = []
     ambient_curve = []
     wind_curve = []
+    humidity_curve = []
+    solar_curve = []
     rating_curve = []
-    for i in range(24):
-        hours.append((now + timedelta(hours=i)).strftime("%H:%M"))
-        hour_of_day = (now + timedelta(hours=i)).hour
-        # Diurnal ambient: cooler at night, peak mid-afternoon
-        ambient = 20.0 + 9.0 * math.sin(math.pi * (hour_of_day - 6.0) / 12.0)
-        ambient = max(14.0, min(38.0, ambient + random.uniform(-1.5, 1.5)))
-        # Wind: breezier in afternoon
-        wind = 2.0 + 1.6 * math.sin(math.pi * (hour_of_day - 9.0) / 10.0)
-        wind = max(0.5, wind + random.uniform(-0.7, 0.7))
-        rating = twin.calculate_dynamic_rating(ambient, wind)
-        ambient_curve.append(round(ambient, 1))
-        wind_curve.append(round(wind, 1))
-        rating_curve.append(rating)
+    source = "synthetic"
+    data_items = None
+
+    try:
+        data_items = wx.fetch_forecast()
+        source = "open-meteo"
+    except wx.WeatherFetchError:
+        pass
+
+    if data_items:
+        for i, item in enumerate(data_items):
+            hours.append(item["hour"])
+            ambient = item["ambient"]
+            wind = item["wind"]
+            humidity = item["humidity"]
+            solar = item["solar_radiation"]
+            rating = twin.calculate_dynamic_rating(ambient, wind)
+            ambient_curve.append(round(ambient, 1))
+            wind_curve.append(round(wind, 1))
+            humidity_curve.append(round(humidity, 1))
+            solar_curve.append(round(solar, 1))
+            rating_curve.append(rating)
+    else:
+        # Fallback: synthetic diurnal profile
+        for i in range(24):
+            hours.append((now + timedelta(hours=i)).strftime("%H:%M"))
+            hour_of_day = (now + timedelta(hours=i)).hour
+            ambient = 20.0 + 9.0 * math.sin(math.pi * (hour_of_day - 6.0) / 12.0)
+            ambient = max(14.0, min(38.0, ambient + random.uniform(-1.5, 1.5)))
+            wind = 2.0 + 1.6 * math.sin(math.pi * (hour_of_day - 9.0) / 10.0)
+            wind = max(0.5, wind + random.uniform(-0.7, 0.7))
+            rating = twin.calculate_dynamic_rating(ambient, wind)
+            ambient_curve.append(round(ambient, 1))
+            wind_curve.append(round(wind, 1))
+            humidity_curve.append(round(55.0, 1))
+            solar_curve.append(0.0)
+            rating_curve.append(rating)
 
     return {
         "hours": hours,
         "ambient": ambient_curve,
         "wind": wind_curve,
+        "humidity": humidity_curve,
+        "solar_radiation": solar_curve,
         "dynamic_rating": rating_curve,
         "static_rating": twin.static_rating,
         "max_temp": twin.max_temp,
+        "source": source,
     }
 
 

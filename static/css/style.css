@@ -179,6 +179,13 @@ body {
   font-size: 14px; font-weight: 600; color: var(--text);
   margin-bottom: 12px;
 }
+.source-badge {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 10px; margin-left: 8px;
+  vertical-align: middle; letter-spacing: 0.4px;
+}
+.source-badge.real { background: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); }
+.source-badge.synth { background: rgba(167, 139, 250, 0.15); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.4); }
 .chart-wrap { position: relative; height: 300px; }
 
 /* ---------- Sidebar ---------- */

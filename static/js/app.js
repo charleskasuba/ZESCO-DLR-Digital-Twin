@@ -130,12 +130,14 @@ function initCharts() {
         { label: "Forecast Dynamic Rating", data: [], borderColor: "#2ecc71", fill: true, backgroundColor: "rgba(46,204,113,0.14)", tension: 0.3, pointRadius: 2, borderWidth: 2.5, yAxisID: "y" },
         { label: "Static Rating", data: [], borderColor: "#e63946", borderDash: [6, 4], pointRadius: 0, borderWidth: 2, yAxisID: "y" },
         { label: "Ambient", data: [], borderColor: "#38bdf8", pointRadius: 0, borderWidth: 1.5, yAxisID: "y2" },
+        { label: "Wind Speed", data: [], borderColor: "#a78bfa", borderDash: [3, 3], pointRadius: 0, borderWidth: 1.5, yAxisID: "y3" },
       ],
     },
     options: baseOptions({
       scales: {
         y: { title: { display: true, text: "Amperes (A)" }, suggestedMin: 0 },
         y2: { position: "right", title: { display: true, text: "Ambient (deg C)" }, grid: { drawOnChartArea: false } },
+        y3: { position: "right", title: { display: true, text: "Wind (m/s)" }, grid: { drawOnChartArea: false } },
       },
     }),
   });
@@ -193,7 +195,13 @@ function updateForecastChart(fc) {
   charts.forecast.data.datasets[0].data = fc.dynamic_rating;
   charts.forecast.data.datasets[1].data = fc.dynamic_rating.map(() => fc.static_rating);
   charts.forecast.data.datasets[2].data = fc.ambient;
+  charts.forecast.data.datasets[3].data = fc.wind || fc.ambient.map(() => 0);
   charts.forecast.update("none");
+  const badge = document.getElementById("forecastSource");
+  if (badge) {
+    badge.textContent = fc.source === "open-meteo" ? "Open-Meteo" : "Synthetic";
+    badge.className = fc.source === "open-meteo" ? "source-badge real" : "source-badge synth";
+  }
 }
 
 function updateAiForecastChart(fc) {
