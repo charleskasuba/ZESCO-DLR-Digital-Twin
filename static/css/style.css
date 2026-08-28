@@ -406,3 +406,144 @@ input[type="range"] {
 .chat-input input:focus { border-color: var(--info); }
 .chat-send { flex: 0 0 auto; padding: 9px 12px; }
 .chat-typing { color: var(--muted); font-style: italic; }
+
+/* ---------- National transmission network section ---------- */
+.national-section { margin-top: 4px; }
+.section-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: -4px 0 16px;
+  max-width: 900px;
+  line-height: 1.5;
+}
+
+.net-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.net-summary-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.net-summary-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.net-summary-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.voltage-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.volt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.volt-chip:hover { border-color: var(--info); }
+.volt-chip.active {
+  border-color: var(--vc);
+  background: color-mix(in srgb, var(--vc) 14%, transparent);
+  box-shadow: 0 0 0 1px var(--vc) inset;
+}
+.volt-chip-count {
+  font-size: 11px;
+  color: var(--vc);
+  background: color-mix(in srgb, var(--vc) 16%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.ntable {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ntable-head,
+.ntable-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1.4fr 0.7fr 0.9fr 0.8fr 0.7fr 1.2fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  font-size: 12.5px;
+}
+.ntable-head {
+  background: var(--bg-2);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+.ntable-row {
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  transition: background 0.15s;
+}
+.ntable-row:last-child { border-bottom: none; }
+.ntable-row:hover { background: var(--card-hover); }
+.ntable-row.active {
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25) inset;
+}
+.ntable-row .col-from b { color: var(--text); }
+.ntable-row .col-to { color: var(--muted); }
+.ntable-row .col-to i { color: var(--info); margin-right: 4px; font-size: 11px; }
+.ntable-row .col-volt {
+  color: var(--vc);
+  font-weight: 700;
+}
+.ntable-row .col-conductor,
+.ntable-row .col-len,
+.ntable-row .col-towers { color: var(--muted); }
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status-badge.st-ok { background: rgba(46, 204, 113, 0.14); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); }
+.status-badge.st-commissioned { background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+.status-badge.st-pending { background: rgba(255, 176, 32, 0.14); color: #ffb020; border: 1px solid rgba(255, 176, 32, 0.4); }
+.status-badge.st-charged { background: rgba(167, 139, 250, 0.14); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.4); }
+
+@media (max-width: 720px) {
+  .ntable-head,
+  .ntable-row {
+    grid-template-columns: 1.1fr 1.1fr 0.8fr 1fr;
+    font-size: 12px;
+  }
+  .ntable-head .col-conductor,
+  .ntable-head .col-towers,
+  .ntable-row .col-conductor,
+  .ntable-row .col-towers { display: none; }
+}

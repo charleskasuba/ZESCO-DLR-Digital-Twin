@@ -271,11 +271,58 @@ def route_for(line_) -> list:
     return [[lat1, lon1], [lat2, lon2]]
 
 
+def endpoint_names(name: str):
+    """Return (origin_substation, destination_substation) strings.
+
+    Splits a line's display name '<From> - <To>' into its two endpoints,
+    handling circuit-number suffixes, parenthetical status notes and
+    hyphenated compound station names such as 'Musonda T-Off'.
+    """
+    import re
+
+    base = name.split("(")[0].strip()
+    base = base.replace("T-Off", "T__OFF")
+    parts = base.split("-")
+    if len(parts) < 2:
+        return name, name
+    origin = re.sub(r"\s*\d+$", "", parts[0].strip()).strip()
+    destination = parts[-1].strip().split(" Line")[0].strip()
+    destination = re.sub(r"\s*\d+$", "", destination).strip()
+    origin = origin.replace("T__OFF", "T-Off")
+    destination = destination.replace("T__OFF", "T-Off")
+    return origin or name, destination or name
+
+
+def status_for(line_) -> str:
+    """Classify the operational status of a line from its notes / name.
+
+    Returns one of: 'Commissioned', 'In Service', 'Pending / Under
+    construction', 'Energised (lower voltage)'.
+    """
+    text = ((line_.get("notes") or "") + " " + line_["name"]).lower()
+    if "pending commission" in text or "not commission" in text or "under construction" in text:
+        return "Pending / Under construction"
+    if "charged at" in text or "energised at" in text:
+        return "Energised (lower voltage)"
+    if line_.get("commissioned"):
+        return "In Service"
+    return "Commissioned"
+
+
+def enrich(line_) -> dict:
+    """Return an enriched copy of a line with origin, destination, status."""
+    result = dict(line_)
+    result["route"] = route_for(line_)
+    origin, destination = endpoint_names(line_["name"])
+    result["origin"] = origin
+    result["destination"] = destination
+    result["status"] = status_for(line_)
+    return result
+
+
 def all_lines() -> list:
-    """All registered line segments (330 kV + 66 kV) with their routes."""
-    lines = LINES_330KV + LINES_66KV
-    for ln in lines:
-        ln.setdefault("route", route_for(ln))
+    """All registered line segments (330 kV + 66 kV), enriched."""
+    lines = [enrich(ln) for ln in (LINES_330KV + LINES_66KV)]
     return lines
 
 
@@ -285,12 +332,10 @@ def lines_by_voltage(voltage_kv: int) -> list:
 
 
 def line(line_id: str) -> dict:
-    """Look up a single line segment by id (with its route)."""
-    for ln in all_lines():
+    """Look up a single line segment by id (enriched with route/status)."""
+    for ln in LINES_330KV + LINES_66KV:
         if ln["id"] == line_id:
-            result = dict(ln)
-            result["route"] = route_for(ln)
-            return result
+            return enrich(ln)
     raise KeyError(f"Unknown line: {line_id}")
 
 

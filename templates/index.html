@@ -135,6 +135,42 @@
 
     </section>
 
+    <section class="content national-section">
+      <div class="card">
+        <h3 class="card-title"><i class="fa-solid fa-route"></i> Zambian National Transmission Network &mdash; All Lines</h3>
+        <p class="section-sub">Every registered transmission &amp; distribution line across Zambia, showing where each corridor originates from, where it runs to, and its live operational status (all voltage levels).</p>
+
+        <div class="net-summary" id="netSummary">
+          <div class="net-summary-card">
+            <span class="net-summary-value" id="netTotalLines">--</span>
+            <span class="net-summary-label">Total Lines</span>
+          </div>
+          <div class="net-summary-card">
+            <span class="net-summary-value" id="netTotalKm">--</span>
+            <span class="net-summary-label">Total Length (km)</span>
+          </div>
+          <div class="net-summary-card">
+            <span class="net-summary-value" id="netTotalTowers">--</span>
+            <span class="net-summary-label">Total Towers</span>
+          </div>
+          <div class="net-summary-card">
+            <span class="net-summary-value" id="netStatusInService">--</span>
+            <span class="net-summary-label">In Service</span>
+          </div>
+          <div class="net-summary-card">
+            <span class="net-summary-value" id="netStatusPending">--</span>
+            <span class="net-summary-label">Pending / Construction</span>
+          </div>
+        </div>
+
+        <div class="voltage-toggles" id="voltageToggles"></div>
+
+        <div id="networkTableWrap">
+          <div class="event-empty" id="networkLoading">Loading national transmission network...</div>
+        </div>
+      </div>
+    </section>
+
     <aside class="sidebar">
 
       <div class="card">

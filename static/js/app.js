@@ -64,6 +64,15 @@ const els = {
   lineLength: document.getElementById("lineLength"),
   lineStatic: document.getElementById("lineStatic"),
   btnLineApply: document.getElementById("btnLineApply"),
+  netSummary: document.getElementById("netSummary"),
+  netTotalLines: document.getElementById("netTotalLines"),
+  netTotalKm: document.getElementById("netTotalKm"),
+  netTotalTowers: document.getElementById("netTotalTowers"),
+  netStatusInService: document.getElementById("netStatusInService"),
+  netStatusPending: document.getElementById("netStatusPending"),
+  voltageToggles: document.getElementById("voltageToggles"),
+  networkTableWrap: document.getElementById("networkTableWrap"),
+  networkLoading: document.getElementById("networkLoading"),
 };
 
 const charts = {};
@@ -647,6 +656,112 @@ function bindSlider(labelEl, valueEl, unit, decimals) {
   };
 }
 
+/* ----------------------- national network section ----------------------- */
+
+const NET_STATE = { voltage: null };
+
+const voltageColors = {
+  330: "#f43f5e",
+  220: "#f59e0b",
+  132: "#a855f7",
+  88: "#06b6d4",
+  66: "#3b82f6",
+};
+
+function statusBadge(status) {
+  const cls =
+    status === "In Service"
+      ? "st-ok"
+      : status === "Pending / Under construction"
+      ? "st-pending"
+      : status === "Energised (lower voltage)"
+      ? "st-charged"
+      : "st-commissioned";
+  return '<span class="status-badge ' + cls + '">' + status + "</span>";
+}
+
+function renderNetworkSummary(totals, statusCounts) {
+  els.netTotalLines.textContent = totals.count;
+  els.netTotalKm.textContent = totals.total_km.toLocaleString() + " km";
+  els.netTotalTowers.textContent = totals.towers.toLocaleString();
+  els.netStatusInService.textContent = statusCounts["In Service"] || 0;
+  els.netStatusPending.textContent =
+    (statusCounts["Pending / Under construction"] || 0) +
+    (statusCounts["Energised (lower voltage)"] || 0);
+}
+
+function renderVoltageToggles(levels) {
+  const wrap = els.voltageToggles;
+  wrap.innerHTML = "";
+  levels.forEach((lv) => {
+    const btn = document.createElement("button");
+    btn.className = "volt-chip" + (lv.voltage_kv === NET_STATE.voltage ? " active" : "");
+    btn.innerHTML =
+      lv.voltage_kv +
+      " kV <span class='volt-chip-count'>" +
+      lv.count +
+      "</span>";
+    btn.style.setProperty("--vc", voltageColors[lv.voltage_kv] || "#8896b0");
+    btn.addEventListener("click", () => {
+      NET_STATE.voltage = lv.voltage_kv;
+      renderVoltageToggles(levels);
+      renderNetworkTable(lv.lines, lv.voltage_kv);
+    });
+    wrap.appendChild(btn);
+  });
+  if (NET_STATE.voltage === null && levels.length) {
+    NET_STATE.voltage = levels[0].voltage_kv;
+  }
+}
+
+function renderNetworkTable(lines, voltage) {
+  const wrap = els.networkTableWrap;
+  const header =
+    '<div class="ntable-head">' +
+    '<span class="col-from">From / Origin</span>' +
+    '<span class="col-to">To / Destination</span>' +
+    '<span class="col-volt">Voltage</span>' +
+    '<span class="col-conductor">Conductor</span>' +
+    '<span class="col-len">Length</span>' +
+    '<span class="col-towers">Towers</span>' +
+    '<span class="col-status">Status</span>' +
+    "</div>";
+  const rows = lines
+    .map(function (ln) {
+      const isActive = state.activeLineId === ln.id;
+      const vc = voltageColors[ln.voltage_kv] || "#8896b0";
+      return (
+        '<div class="ntable-row' + (isActive ? " active" : "") + '">' +
+        '<span class="col-from"><b>' + ln.origin + "</b></span>" +
+        '<span class="col-to"><i class="fa-solid fa-arrow-right-long"></i> ' + ln.destination + "</span>" +
+        '<span class="col-volt" style="--vc:' + vc + '">' + ln.voltage_kv + ' kV</span>' +
+        '<span class="col-conductor">' + (ln.conductor || "&mdash;") + "</span>" +
+        '<span class="col-len">' + (ln.length_km ? ln.length_km.toLocaleString() + " km" : "&mdash;") + "</span>" +
+        '<span class="col-towers">' + (ln.towers ? ln.towers.toLocaleString() : "&mdash;") + "</span>" +
+        '<span class="col-status">' + statusBadge(ln.status) + "</span>" +
+        "</div>"
+      );
+    })
+    .join("");
+  wrap.innerHTML =
+    '<div class="ntable ntable-' + voltage + '">' + header + rows + "</div>";
+}
+
+async function loadNationalNetwork() {
+  try {
+    const data = await getJSON("/api/network");
+    renderNetworkSummary(data.totals, data.status_counts);
+    renderVoltageToggles(data.voltage_levels);
+    const active =
+      data.voltage_levels.find((v) => v.voltage_kv === NET_STATE.voltage) ||
+      data.voltage_levels[0];
+    if (active) renderNetworkTable(active.lines, active.voltage_kv);
+    els.networkLoading.style.display = "none";
+  } catch (err) {
+    els.networkLoading.textContent = "Failed to load national network: " + err.message;
+  }
+}
+
 /* ----------------------- init ----------------------- */
 function init() {
   initCharts();
@@ -684,6 +799,7 @@ function init() {
   loadAll();
   setInterval(loadAll, REFRESH_MS);
   loadLines();
+  loadNationalNetwork();
   loadAi();
   setInterval(loadAi, 6000);
 }

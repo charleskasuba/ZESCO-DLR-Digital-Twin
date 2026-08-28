@@ -237,6 +237,65 @@ def set_active_line():
 
 
 # ----------------------------------------------------------------------
+# National network overview
+# ----------------------------------------------------------------------
+@app.get("/api/network")
+def network_overview():
+    """National transmission network overview for Zambia.
+
+    Returns every registered line grouped by voltage level, with origin /
+    destination substations, status, length, towers and conductor, plus
+    aggregate statistics per voltage level and for the whole country.
+    """
+    lines = na.all_lines()
+    voltage_levels = {}
+    for ln in lines:
+        level = voltage_levels.setdefault(
+            ln["voltage_kv"],
+            {"voltage_kv": ln["voltage_kv"], "count": 0, "total_km": 0.0, "towers": 0, "lines": []},
+        )
+        level["count"] += 1
+        level["total_km"] += ln["length_km"] or 0.0
+        level["towers"] += ln["towers"] or 0
+        # Compact line payload for the table
+        level["lines"].append(
+            {
+                "id": ln["id"],
+                "name": ln["name"],
+                "origin": ln["origin"],
+                "destination": ln["destination"],
+                "status": ln["status"],
+                "voltage_kv": ln["voltage_kv"],
+                "conductor": ln["conductor"],
+                "length_km": ln["length_km"],
+                "towers": ln["towers"],
+                "commissioned": ln["commissioned"],
+                "builder": ln.get("builder", ""),
+                "route": ln["route"],
+            }
+        )
+
+    totals = {
+        "count": len(lines),
+        "total_km": round(sum((l["length_km"] or 0) for l in lines), 1),
+        "towers": sum((l["towers"] or 0) for l in lines),
+    }
+    # Status breakdown across the whole network
+    status_counts = {}
+    for l in lines:
+        status_counts[l["status"]] = status_counts.get(l["status"], 0) + 1
+
+    ordered = sorted(voltage_levels.values(), key=lambda v: -v["voltage_kv"])
+
+    return {
+        "active_line": _ACTIVE_LINE_ID,
+        "totals": totals,
+        "status_counts": status_counts,
+        "voltage_levels": ordered,
+    }
+
+
+# ----------------------------------------------------------------------
 # Telemetry ingestion
 # ----------------------------------------------------------------------
 @app.post("/api/telemetry")
@@ -576,6 +635,7 @@ def api_index():
             "lines": "/api/lines",
             "get_line": "/api/lines/<line_id>",
             "set_active_line": "POST /api/lines/active",
+            "network_overview": "/api/network",
             "ai_insights": "/api/ai/insights",
             "ai_forecast": "/api/ai/forecast",
             "ai_anomalies": "/api/ai/anomalies",
