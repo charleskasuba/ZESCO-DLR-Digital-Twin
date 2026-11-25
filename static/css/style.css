@@ -170,6 +170,61 @@ body {
 .accent-warn { color: var(--accent-2); }
 .accent-bad { color: var(--accent); font-weight: 600; }
 
+/* ---------- Live metric polish ---------- */
+.cards { gap: 16px; }
+
+.metric {
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.metric:hover {
+  transform: translateY(-2px);
+  border-color: #2c3d61;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+.metric-live {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(247, 201, 72, 0.28);
+}
+.metric-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(130px 70px at 92% 0%, rgba(247, 201, 72, 0.12), transparent 70%);
+  pointer-events: none;
+}
+.metric-live.trip {
+  border-color: rgba(230, 57, 70, 0.75);
+  box-shadow: 0 0 0 1px rgba(230, 57, 70, 0.35), 0 8px 24px rgba(230, 57, 70, 0.18);
+}
+
+.load-bar {
+  position: relative;
+  height: 7px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.load-bar-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  transition: width 0.5s ease, background 0.3s ease;
+}
+.load-bar-fill.good { background: linear-gradient(90deg, #2ecc71, #7ee2a8); }
+.load-bar-fill.warn { background: linear-gradient(90deg, #ffb020, #ffd166); }
+.load-bar-fill.danger { background: linear-gradient(90deg, #e63946, #ff6b5e); }
+.load-bar-limit {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  width: 2px;
+  height: calc(100% + 4px);
+  background: rgba(230, 57, 70, 0.95);
+  box-shadow: 0 0 6px rgba(230, 57, 70, 0.8);
+}
+
 /* ---------- Charts ---------- */
 .grid-2 {
   display: grid;

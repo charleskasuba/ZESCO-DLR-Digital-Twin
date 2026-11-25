@@ -2,6 +2,7 @@
 "use strict";
 
 const REFRESH_MS = 3000;
+const TRIP_LIMIT_A = 15; // ESP32 relay overcurrent trip limit
 
 const state = {
   history: [],
@@ -28,6 +29,8 @@ const els = {
   statusMessage: document.getElementById("statusMessage"),
   mCurrent: document.getElementById("mCurrent"),
   mCurrentSub: document.getElementById("mCurrentSub"),
+  mCurrentCard: document.getElementById("mCurrentCard"),
+  loadBarFill: document.getElementById("loadBarFill"),
   mStatic: document.getElementById("mStatic"),
   mDynamic: document.getElementById("mDynamic"),
   mDynamicSub: document.getElementById("mDynamicSub"),
@@ -346,8 +349,17 @@ function renderMetrics(rec) {
     setStatus("", "Waiting for live telemetry from the ESP32 sensor node...");
     return;
   }
+  const loadPct = (rec.current_load / TRIP_LIMIT_A) * 100;
   els.mCurrent.textContent = rec.current_load.toFixed(2) + " A";
-  els.mCurrentSub.textContent = "load " + Math.round((rec.current_load / rec.dynamic_rating) * 100) + "% of dynamic";
+  els.mCurrentSub.textContent = Math.round(loadPct) + "% of " + TRIP_LIMIT_A + " A trip limit";
+  if (els.loadBarFill) {
+    els.loadBarFill.style.width = Math.min(100, loadPct) + "%";
+    els.loadBarFill.className =
+      "load-bar-fill " + (loadPct >= 100 ? "danger" : loadPct >= 80 ? "warn" : "good");
+  }
+  if (els.mCurrentCard) {
+    els.mCurrentCard.classList.toggle("trip", rec.current_load >= TRIP_LIMIT_A);
+  }
 
   els.mStatic.textContent = rec.static_rating.toFixed(2) + " A";
   els.mDynamic.textContent = rec.dynamic_rating.toFixed(2) + " A";
@@ -361,20 +373,28 @@ function renderMetrics(rec) {
   els.mTempSub.textContent = margin.toFixed(1) + " deg C margin to max";
   els.mTempSub.className = "metric-sub " + (margin < 10 ? "accent-bad" : margin < 25 ? "accent-warn" : "");
 
-  els.mSag.textContent = rec.sag_m.toFixed(2) + " m";
-  els.mClearance.textContent = "clearance " + rec.clearance_m.toFixed(2) + " m";
+  const sag = Number(rec.sag_m);
+  const clearance = Number(rec.clearance_m);
+  els.mSag.textContent = isFinite(sag) ? sag.toFixed(2) + " m" : "-- m";
+  els.mClearance.textContent = isFinite(clearance)
+    ? "clearance " + clearance.toFixed(2) + " m"
+    : "clearance --";
 
   els.mVoltage.textContent = (rec.voltage_v || 0).toFixed(1) + " V";
   els.mPower.textContent = (rec.power_w || 0).toFixed(1) + " W";
   els.mEnergy.textContent = (rec.energy_kwh || 0).toFixed(3) + " kWh";
   els.mPf.textContent = (rec.pf || 0).toFixed(2);
 
-  if (rec.status === "OK") {
-    setStatus("ok", "Line operating within dynamic limits. Current load " + rec.current_load.toFixed(2) + " A is safe.");
+  if (rec.relay_tripped || rec.current_load >= TRIP_LIMIT_A) {
+    setStatus("", "RELAY TRIP: load reached the " + TRIP_LIMIT_A + " A limit (" + rec.current_load.toFixed(2) + " A). The ESP32 has disconnected the circuit - reduce current and reset the node.");
+  } else if (rec.current_load >= TRIP_LIMIT_A * 0.8) {
+    setStatus("warning", "Approaching trip limit: " + rec.current_load.toFixed(2) + " A of " + TRIP_LIMIT_A + " A (" + Math.round(loadPct) + "%). Reduce load to avoid the relay disconnecting.");
   } else if (rec.status === "WARNING") {
     setStatus("warning", "UNLOCKED CAPACITY: " + rec.current_load.toFixed(2) + " A exceeds the static limit (" + rec.static_rating.toFixed(2) + " A) but is safe under current wind cooling (" + rec.wind_speed.toFixed(1) + " m/s).");
-  } else {
+  } else if (rec.status !== "OK") {
     setStatus("", "CRITICAL OVERLOAD: " + rec.current_load.toFixed(2) + " A exceeds the dynamic limit (" + rec.dynamic_rating.toFixed(2) + " A). Thermal sagging risk - reduce load or dispatch crew.");
+  } else {
+    setStatus("ok", "Line healthy - " + rec.current_load.toFixed(2) + " A is well within the " + TRIP_LIMIT_A + " A relay trip limit.");
   }
 }
 

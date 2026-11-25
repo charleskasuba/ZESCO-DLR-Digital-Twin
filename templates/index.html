@@ -48,12 +48,16 @@
       </div>
 
       <div class="cards">
-        <div class="card metric">
+        <div class="card metric metric-live" id="mCurrentCard">
           <div class="metric-icon icon-load"><i class="fa-solid fa-plug"></i></div>
           <div class="metric-body">
             <span class="metric-label">Line Current</span>
             <span class="metric-value" id="mCurrent">-- A</span>
             <span class="metric-sub" id="mCurrentSub">no data</span>
+            <div class="load-bar" title="Load vs the 15 A relay trip limit">
+              <div class="load-bar-fill good" id="loadBarFill"></div>
+              <span class="load-bar-limit"></span>
+            </div>
           </div>
         </div>
         <div class="card metric">
@@ -230,6 +234,7 @@
           <div class="line-meta-row"><span>Active power</span><b id="devPower">--</b></div>
           <div class="line-meta-row"><span>Energy</span><b id="devEnergy">--</b></div>
           <div class="line-meta-row"><span>Power factor</span><b id="devPf">--</b></div>
+          <div class="line-meta-row"><span>Trip limit</span><b id="devTripLimit">15.0 A</b></div>
           <div class="line-meta-row"><span>Relay</span><b id="devRelay">--</b></div>
         </div>
         <p class="hint">
