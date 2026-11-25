@@ -88,6 +88,38 @@
             <span class="metric-sub accent-warn" id="mClearance">--</span>
           </div>
         </div>
+        <div class="card metric">
+          <div class="metric-icon icon-volt"><i class="fa-solid fa-bolt"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Line Voltage</span>
+            <span class="metric-value" id="mVoltage">-- V</span>
+            <span class="metric-sub" id="mVoltageSub">from ESP32 PZEM</span>
+          </div>
+        </div>
+        <div class="card metric">
+          <div class="metric-icon icon-power"><i class="fa-solid fa-gauge-high"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Active Power</span>
+            <span class="metric-value" id="mPower">-- W</span>
+            <span class="metric-sub" id="mPowerSub">from ESP32 PZEM</span>
+          </div>
+        </div>
+        <div class="card metric">
+          <div class="metric-icon icon-energy"><i class="fa-solid fa-battery-three-quarters"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Energy</span>
+            <span class="metric-value" id="mEnergy">-- kWh</span>
+            <span class="metric-sub">cumulative</span>
+          </div>
+        </div>
+        <div class="card metric">
+          <div class="metric-icon icon-pf"><i class="fa-solid fa-wave-square"></i></div>
+          <div class="metric-body">
+            <span class="metric-label">Power Factor</span>
+            <span class="metric-value" id="mPf">--</span>
+            <span class="metric-sub" id="mPfSub">from ESP32 PZEM</span>
+          </div>
+        </div>
       </div>
 
       <div class="grid-2">
@@ -188,18 +220,21 @@
         </div>
       </div>
 
-      <div class="card sim-card">
-        <h3 class="card-title"><i class="fa-solid fa-gamepad"></i> Control &amp; Simulation</h3>
-        <label class="slider-label" for="simAmbient">Ambient Temp <b id="simAmbientV">25.0 &deg;C</b></label>
-        <input type="range" id="simAmbient" min="10" max="45" step="0.5" value="25">
-        <label class="slider-label" for="simWind">Wind Speed <b id="simWindV">2.0 m/s</b></label>
-        <input type="range" id="simWind" min="0.2" max="15" step="0.1" value="2.0">
-        <label class="slider-label" for="simCurrent">Current Load <b id="simCurrentV">0 A</b></label>
-        <input type="range" id="simCurrent" min="0" max="1200" step="5" value="0">
-        <div class="sim-actions">
-          <button class="btn btn-primary" id="btnSend"><i class="fa-solid fa-paper-plane"></i> Send Reading</button>
-          <button class="btn btn-toggle" id="btnStream"><i class="fa-solid fa-play"></i> Auto Stream</button>
+      <div class="card">
+        <h3 class="card-title"><i class="fa-solid fa-microchip"></i> ESP32 Sensor Node</h3>
+        <div class="line-meta">
+          <div class="line-meta-row"><span>Status</span><b id="devStatus">--</b></div>
+          <div class="line-meta-row"><span>Device</span><b id="devDeviceId">--</b></div>
+          <div class="line-meta-row"><span>Last reading</span><b id="devLastSeen">--</b></div>
+          <div class="line-meta-row"><span>Voltage</span><b id="devVoltage">--</b></div>
+          <div class="line-meta-row"><span>Active power</span><b id="devPower">--</b></div>
+          <div class="line-meta-row"><span>Energy</span><b id="devEnergy">--</b></div>
+          <div class="line-meta-row"><span>Power factor</span><b id="devPf">--</b></div>
+          <div class="line-meta-row"><span>Relay</span><b id="devRelay">--</b></div>
         </div>
+        <p class="hint">
+          Live values streamed from the ESP32 over <code>POST /api/telemetry</code>.
+        </p>
       </div>
 
       <div class="card">
@@ -233,7 +268,7 @@
           <a class="btn btn-ghost" href="/docs" target="_blank"><i class="fa-solid fa-book"></i> API Docs</a>
         </div>
         <p class="hint">
-          Data source: <span id="dataSource">ESP32 sensor node / simulator</span>
+          Data source: <span id="dataSource">ESP32 sensor node (live)</span>
         </p>
       </div>
 

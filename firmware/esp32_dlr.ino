@@ -28,7 +28,8 @@ const char* ssid       = "YOUR_WIFI_SSID";
 const char* password   = "YOUR_WIFI_PASSWORD";
 // Render free tier serves HTTPS. For a local backend use:
 //   http://<your-PC-LAN-IP>:5000/api/telemetry
-const char* serverUrl  = "https://zesco-dlr-twin.onrender.com/api/telemetry";
+// NOTE: gridemonitor/gridemonitor.ino is the primary firmware in use.
+const char* serverUrl  = "https://zesco-dlr-digital-twin.onrender.com/api/telemetry";
 
 // ---- Pin definitions ----
 #define ONE_WIRE_BUS 4     // DS18B20 wire temperature sensor

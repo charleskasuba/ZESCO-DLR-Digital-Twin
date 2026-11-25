@@ -68,8 +68,9 @@ _ACTIVE_LINE = na.line(_ACTIVE_LINE_ID)
 # Schemas (used for API validation + auto OpenAPI docs)
 # ----------------------------------------------------------------------
 class TelemetryIn(Schema):
+    # --- Required core readings (always sent by the ESP32 node) ---
     conductor_temp = fields.Float(
-        required=True, metadata={"description": "Conductor temp (deg C)"}
+        required=True, metadata={"description": "Conductor (wire) temp (deg C)"}
     )
     ambient_temp = fields.Float(
         required=True, metadata={"description": "Ambient temp (deg C)"}
@@ -84,15 +85,54 @@ class TelemetryIn(Schema):
         required=True, metadata={"description": "Line current (A)"}
     )
 
+    # --- ESP32 PZEM-004T electrical measurements (optional) ---
+    voltage_v = fields.Float(
+        load_default=0.0, metadata={"description": "Line voltage (V)"}
+    )
+    power_w = fields.Float(
+        load_default=0.0, metadata={"description": "Active power (W)"}
+    )
+    energy_kwh = fields.Float(
+        load_default=0.0, metadata={"description": "Cumulative energy (kWh)"}
+    )
+    pf = fields.Float(
+        load_default=0.0, metadata={"description": "Power factor"}
+    )
+
+    # --- ESP32 ultrasonic sag/clearance measurements (optional) ---
+    sag_m = fields.Float(
+        allow_none=True, metadata={"description": "Measured sag (m)"}
+    )
+    clearance_m = fields.Float(
+        allow_none=True, metadata={"description": "Measured ground clearance (m)"}
+    )
+
+    # --- ESP32 protection relay state (optional) ---
+    relay_tripped = fields.Boolean(
+        load_default=False, metadata={"description": "Overcurrent relay tripped"}
+    )
+
+    # --- Device identity (optional) ---
+    device_id = fields.String(
+        load_default="esp32-node-01", metadata={"description": "Sensor node id"}
+    )
+
 
 class TelemetryOut(Schema):
     id = fields.Integer()
     timestamp = fields.String()
+    device_id = fields.String()
+    source = fields.String()
     conductor_temp = fields.Float()
     ambient_temp = fields.Float()
     humidity = fields.Float()
     wind_speed = fields.Float()
     current_load = fields.Float()
+    voltage_v = fields.Float()
+    power_w = fields.Float()
+    energy_kwh = fields.Float()
+    pf = fields.Float()
+    relay_tripped = fields.Boolean()
     static_rating = fields.Float()
     dynamic_rating = fields.Float()
     capacity_gain_pct = fields.Float()
@@ -117,41 +157,17 @@ class EventOut(Schema):
 
 
 # ----------------------------------------------------------------------
-# Startup: init DB and seed demo history so the dashboard is never empty
+# Startup: create the schema and upgrade older databases.
+#
+# No demo/synthetic readings are generated - every value shown on the
+# dashboard originates from the ESP32 sensor node via POST /api/telemetry.
 # ----------------------------------------------------------------------
-def _seed_demo_data():
-    db.init_db()
-    if db.count_telemetry() > 0:
-        return
-
-    now = datetime.now(timezone.utc)
-    static = twin.static_rating
-    seed_records = []
-    for i in range(90):
-        ts = (now - timedelta(minutes=90 - i)).isoformat(timespec="seconds")
-        ambient = 24.0 + 4.0 * math.sin(i / 8.0) + random.uniform(-1.0, 1.0)
-        wind = max(0.2, 2.2 + 1.4 * math.sin(i / 5.0) + random.uniform(-0.6, 0.6))
-        # Realistic load centred around 65% of the line's static rating
-        current = max(
-            0.05 * static,
-            static * (0.62 + 0.12 * math.sin(i / 6.0) + random.uniform(-0.05, 0.05)),
-        )
-        rec = twin.evaluate(current, ambient, wind)
-        rec.update(
-            {
-                "timestamp": ts,
-                "humidity": round(55.0 + random.uniform(-8, 8), 1),
-                "conductor_temp": rec["model_temp"],
-            }
-        )
-        seed_records.append(rec)
-
-    for rec in seed_records:
-        db.insert_telemetry(rec)
-    db.insert_event("INFO", "System initialised - demo telemetry seeded")
-
-
-_seed_demo_data()
+db.init_db()
+_removed = db.purge_non_esp32()
+if _removed:
+    db.insert_event("INFO", f"Removed {_removed} legacy demo rows - ESP32 data only")
+if db.count_telemetry() == 0:
+    db.insert_event("INFO", "System initialised - waiting for ESP32 telemetry")
 
 
 # ----------------------------------------------------------------------
@@ -302,10 +318,12 @@ def network_overview():
 @app.input(TelemetryIn)
 @app.output(TelemetryOut, status_code=201)
 def ingest_telemetry(json_data: dict):
-    """Ingest a sensor reading from the ESP32 or simulator.
+    """Ingest a live sensor reading from the ESP32 node.
 
-    Computes the DLR snapshot and persists it to the history database,
-    raising alert events whenever the line crosses a safety threshold.
+    The DLR engine computes the static/dynamic ratings and operating status
+    from the ESP32's measurements. The sag and ground clearance reported by
+    the ESP32 ultrasonic sensors are stored verbatim (the thermal model is
+    only used as a fallback when the node does not supply them).
     """
     rec = twin.evaluate(
         current=json_data["current_load"],
@@ -313,8 +331,21 @@ def ingest_telemetry(json_data: dict):
         wind_speed=json_data["wind_speed"],
         measured_temp=json_data["conductor_temp"],
     )
+    # Prefer the physically measured sag / clearance from the ESP32 rig.
+    if json_data.get("sag_m") is not None:
+        rec["sag_m"] = round(json_data["sag_m"], 3)
+    if json_data.get("clearance_m") is not None:
+        rec["clearance_m"] = round(json_data["clearance_m"], 3)
+
     rec["timestamp"] = db.message_timestamp()
+    rec["device_id"] = json_data.get("device_id")
+    rec["source"] = "esp32"
     rec["humidity"] = json_data.get("humidity")
+    rec["voltage_v"] = json_data.get("voltage_v", 0.0)
+    rec["power_w"] = json_data.get("power_w", 0.0)
+    rec["energy_kwh"] = json_data.get("energy_kwh", 0.0)
+    rec["pf"] = json_data.get("pf", 0.0)
+    rec["relay_tripped"] = bool(json_data.get("relay_tripped", False))
     rec["id"] = db.insert_telemetry(rec)
 
     _log_status_event(rec)
@@ -343,24 +374,6 @@ def _log_status_event(rec: dict):
     db.insert_event(status, msg)
 
 
-@app.post("/api/demo/telemetry")
-@app.input(TelemetryIn)
-@app.output(TelemetryOut, status_code=201)
-def demo_telemetry(json_data: dict):
-    """Inject a synthetic reading (used by the dashboard simulator)."""
-    rec = twin.evaluate(
-        current=json_data["current_load"],
-        ambient=json_data["ambient_temp"],
-        wind_speed=json_data["wind_speed"],
-        measured_temp=json_data["conductor_temp"],
-    )
-    rec["timestamp"] = db.message_timestamp()
-    rec["humidity"] = json_data.get("humidity")
-    rec["id"] = db.insert_telemetry(rec)
-    _log_status_event(rec)
-    return rec
-
-
 # ----------------------------------------------------------------------
 # Telemetry reads
 # ----------------------------------------------------------------------
@@ -372,6 +385,36 @@ def latest_telemetry():
     if row is None:
         return {"status": "OK"}
     return row
+
+
+@app.get("/api/device/status")
+def device_status():
+    """Live health of the ESP32 sensor node.
+
+    The node is considered online when its most recent telemetry arrived
+    within the last 30 seconds (the firmware posts every 5 seconds).
+    """
+    row = db.latest_telemetry()
+    now = datetime.now(timezone.utc)
+    age = None
+    online = False
+    if row and row.get("timestamp"):
+        try:
+            ts = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
+            age = round((now - ts).total_seconds(), 1)
+            online = age <= 30
+        except ValueError:
+            pass
+
+    return {
+        "device_id": row.get("device_id") if row else None,
+        "source": row.get("source") if row else None,
+        "online": online,
+        "last_seen": row.get("timestamp") if row else None,
+        "age_seconds": age,
+        "readings": db.count_telemetry(),
+        "latest": row,
+    }
 
 
 @app.get("/api/telemetry/history")
@@ -623,7 +666,7 @@ def api_index():
         "endpoints": {
             "health": "/api/health",
             "ingest_telemetry": "POST /api/telemetry",
-            "inject_demo": "POST /api/demo/telemetry",
+            "device_status": "/api/device/status",
             "latest": "/api/telemetry/latest",
             "history": "/api/telemetry/history",
             "events": "/api/telemetry/events",

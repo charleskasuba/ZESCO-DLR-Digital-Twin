@@ -18,11 +18,18 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS telemetry (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp      TEXT NOT NULL,
+    device_id      TEXT,
+    source         TEXT,
     conductor_temp REAL NOT NULL,
     ambient_temp   REAL NOT NULL,
     humidity       REAL,
     wind_speed     REAL NOT NULL,
     current_load   REAL NOT NULL,
+    voltage_v      REAL,
+    power_w        REAL,
+    energy_kwh     REAL,
+    pf             REAL,
+    relay_tripped  INTEGER,
     static_rating  REAL NOT NULL,
     dynamic_rating REAL NOT NULL,
     capacity_gain_pct REAL,
@@ -40,6 +47,18 @@ CREATE TABLE IF NOT EXISTS events (
 );
 """
 
+# Columns added after the first release of the schema. Older telemetry.db
+# files are upgraded in place by _migrate() so no data is lost.
+TELEMETRY_COLUMNS = {
+    "device_id": "TEXT",
+    "source": "TEXT",
+    "voltage_v": "REAL",
+    "power_w": "REAL",
+    "energy_kwh": "REAL",
+    "pf": "REAL",
+    "relay_tripped": "INTEGER",
+}
+
 
 def _connect():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -48,10 +67,19 @@ def _connect():
     return conn
 
 
+def _migrate(conn):
+    """Add any columns missing from a telemetry table created by an older build."""
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(telemetry)")}
+    for name, decl in TELEMETRY_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE telemetry ADD COLUMN {name} {decl}")
+
+
 def init_db():
     conn = _connect()
     try:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.commit()
     finally:
         conn.close()
@@ -62,17 +90,25 @@ def insert_telemetry(record: dict) -> int:
     try:
         cur = conn.execute(
             """INSERT INTO telemetry
-               (timestamp, conductor_temp, ambient_temp, humidity, wind_speed,
-                current_load, static_rating, dynamic_rating, capacity_gain_pct,
+               (timestamp, device_id, source, conductor_temp, ambient_temp, humidity,
+                wind_speed, current_load, voltage_v, power_w, energy_kwh, pf,
+                relay_tripped, static_rating, dynamic_rating, capacity_gain_pct,
                 model_temp, sag_m, clearance_m, status)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 record["timestamp"],
+                record.get("device_id"),
+                record.get("source"),
                 record["conductor_temp"],
                 record["ambient_temp"],
                 record.get("humidity"),
                 record["wind_speed"],
                 record["current_load"],
+                record.get("voltage_v"),
+                record.get("power_w"),
+                record.get("energy_kwh"),
+                record.get("pf"),
+                int(bool(record.get("relay_tripped"))) if record.get("relay_tripped") is not None else None,
                 record["static_rating"],
                 record["dynamic_rating"],
                 record.get("capacity_gain_pct"),
@@ -84,6 +120,19 @@ def insert_telemetry(record: dict) -> int:
         )
         conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def purge_non_esp32() -> int:
+    """Delete legacy demo/seed rows so only live ESP32 telemetry remains."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "DELETE FROM telemetry WHERE source IS NULL OR source <> 'esp32'"
+        )
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 

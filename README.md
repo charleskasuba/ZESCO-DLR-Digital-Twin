@@ -27,8 +27,10 @@ on a real-time operator dashboard.
 
 ## Features
 
-- **ESP32 firmware** reading DS18B20, DHT22, ACS712 and an anemometer, posting JSON
-  telemetry every second.
+- **ESP32 firmware** (`gridemonitor/gridemonitor.ino`) reading a PZEM-004T energy
+  meter, DHT22, DS18B20 conductor probe and two ultrasonic sensors (sag &
+  clearance), posting JSON telemetry every 5 seconds. The dashboard shows **only**
+  this live ESP32 data.
 - **IEEE 738 engine** (`dlr_engine.py`) — forward temperature prediction, backward
   dynamic ampacity, **thermal sag & ground clearance** estimation (catenary model).
 - **AI / analytics layer** (`ai_engine.py`) — built on the standard library:
@@ -43,8 +45,8 @@ on a real-time operator dashboard.
   (Copperbelt, Zambia: `-12.693845, 28.184119`) with the line corridor drawn and an
   OpenInfraMap power-infrastructure overlay. Links straight out to OpenInfraMap.
 - **Flask REST API** with automatic Swagger docs at `/docs`:
-  - `POST /api/telemetry` — ESP32 ingestion
-  - `POST /api/demo/telemetry` — simulator injection
+  - `POST /api/telemetry` — ESP32 ingestion (the only data source)
+  - `GET /api/device/status` — ESP32 online/offline + last reading
   - `GET /api/telemetry/latest`, `/api/telemetry/history`, `/api/telemetry/events`
   - `GET /api/dlr/rating`, `/api/dlr/calculate`, `/api/dlr/sag`
   - `GET /api/forecast` — 24 h dynamic-rating outlook
@@ -57,7 +59,7 @@ on a real-time operator dashboard.
 - **Dark-mode operator dashboard** (vanilla HTML/CSS/JS + Chart.js + Leaflet):
   - Live metric cards, capacity / thermal / sag / 24 h forecast charts
   - AI forecast chart, risk gauge and insights feed
-  - Interactive simulator panel with **auto-stream** mode
+  - ESP32 device status panel (online/offline, voltage, power, energy, PF, relay)
   - AI assistant chat widget with quick-question chips
   - Overload banners and a live event feed
 - **Render-ready**: `render.yaml` + `gunicorn` for one-click cloud deployment.
@@ -72,8 +74,8 @@ python app.py
 ```
 
 Open http://localhost:5000 (dashboard) and http://localhost:5000/docs (API docs).
-On first start the app seeds ~90 minutes of demo telemetry so the charts are live
-immediately — use the simulator panel to inject readings.
+The dashboard is intentionally empty until the ESP32 starts posting to
+`/api/telemetry`; no demo or simulated readings are generated.
 
 ## AI + map notes
 
@@ -87,13 +89,16 @@ immediately — use the simulator panel to inject readings.
 
 ## Hardware / ESP32
 
-1. Open `firmware/esp32_dlr.ino` in the Arduino IDE.
-2. Install the required libraries (see header comment).
-3. Set your Wi-Fi credentials and the `serverUrl`.
-4. Flash and watch the serial monitor — telemetry posts every second.
+1. Open `gridemonitor/gridemonitor.ino` in the Arduino IDE.
+2. Install the libraries: PZEM004Tv30, LiquidCrystal_I2C, DHT sensor library,
+   OneWire, DallasTemperature.
+3. Set `WIFI_SSID`, `WIFI_PASS`, `SERVER_URL`, `SERVER_USE_TLS` and `DEVICE_ID`.
+4. Flash and watch the serial monitor — telemetry posts to
+   `/api/telemetry` every 5 seconds.
 
-For a locally running backend use `http://<your-PC-LAN-IP>:5000/api/telemetry`;
-for the Render deployment use your Render service URL.
+For a locally running backend use `http://<your-PC-LAN-IP>:5000` with
+`SERVER_USE_TLS = false`; for the Render deployment use
+`https://<service-name>.onrender.com` with `SERVER_USE_TLS = true`.
 
 ## Deploy to Render
 

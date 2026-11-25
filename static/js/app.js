@@ -2,7 +2,6 @@
 "use strict";
 
 const REFRESH_MS = 3000;
-const STREAM_MS = 4000;
 
 const state = {
   history: [],
@@ -10,7 +9,6 @@ const state = {
   events: [],
   forecast: null,
   ai: { insights: [], risk: null, forecast: null, anomalies: [], site: null },
-  streamTimer: null,
   map: null,
   mapRoute: [],
   lineLayer: null,
@@ -37,17 +35,24 @@ const els = {
   mTempSub: document.getElementById("mTempSub"),
   mSag: document.getElementById("mSag"),
   mClearance: document.getElementById("mClearance"),
+  mVoltage: document.getElementById("mVoltage"),
+  mVoltageSub: document.getElementById("mVoltageSub"),
+  mPower: document.getElementById("mPower"),
+  mPowerSub: document.getElementById("mPowerSub"),
+  mEnergy: document.getElementById("mEnergy"),
+  mPf: document.getElementById("mPf"),
+  mPfSub: document.getElementById("mPfSub"),
+  devStatus: document.getElementById("devStatus"),
+  devDeviceId: document.getElementById("devDeviceId"),
+  devLastSeen: document.getElementById("devLastSeen"),
+  devVoltage: document.getElementById("devVoltage"),
+  devPower: document.getElementById("devPower"),
+  devEnergy: document.getElementById("devEnergy"),
+  devPf: document.getElementById("devPf"),
+  devRelay: document.getElementById("devRelay"),
   eventList: document.getElementById("eventList"),
   footerStatus: document.getElementById("footerStatus"),
   dataSource: document.getElementById("dataSource"),
-  simAmbient: document.getElementById("simAmbient"),
-  simAmbientV: document.getElementById("simAmbientV"),
-  simWind: document.getElementById("simWind"),
-  simWindV: document.getElementById("simWindV"),
-  simCurrent: document.getElementById("simCurrent"),
-  simCurrentV: document.getElementById("simCurrentV"),
-  btnSend: document.getElementById("btnSend"),
-  btnStream: document.getElementById("btnStream"),
   riskFill: document.getElementById("riskFill"),
   riskBand: document.getElementById("riskBand"),
   riskScore: document.getElementById("riskScore"),
@@ -337,7 +342,10 @@ function setStatus(kind, message) {
 }
 
 function renderMetrics(rec) {
-  if (!rec) return;
+  if (!rec || typeof rec.current_load !== "number" || typeof rec.dynamic_rating !== "number") {
+    setStatus("", "Waiting for live telemetry from the ESP32 sensor node...");
+    return;
+  }
   els.mCurrent.textContent = rec.current_load.toFixed(2) + " A";
   els.mCurrentSub.textContent = "load " + Math.round((rec.current_load / rec.dynamic_rating) * 100) + "% of dynamic";
 
@@ -356,6 +364,11 @@ function renderMetrics(rec) {
   els.mSag.textContent = rec.sag_m.toFixed(2) + " m";
   els.mClearance.textContent = "clearance " + rec.clearance_m.toFixed(2) + " m";
 
+  els.mVoltage.textContent = (rec.voltage_v || 0).toFixed(1) + " V";
+  els.mPower.textContent = (rec.power_w || 0).toFixed(1) + " W";
+  els.mEnergy.textContent = (rec.energy_kwh || 0).toFixed(3) + " kWh";
+  els.mPf.textContent = (rec.pf || 0).toFixed(2);
+
   if (rec.status === "OK") {
     setStatus("ok", "Line operating within dynamic limits. Current load " + rec.current_load.toFixed(2) + " A is safe.");
   } else if (rec.status === "WARNING") {
@@ -363,6 +376,35 @@ function renderMetrics(rec) {
   } else {
     setStatus("", "CRITICAL OVERLOAD: " + rec.current_load.toFixed(2) + " A exceeds the dynamic limit (" + rec.dynamic_rating.toFixed(2) + " A). Thermal sagging risk - reduce load or dispatch crew.");
   }
+}
+
+function formatAge(seconds) {
+  if (seconds == null) return "never";
+  if (seconds < 60) return Math.round(seconds) + " s ago";
+  if (seconds < 3600) return Math.round(seconds / 60) + " min ago";
+  return Math.round(seconds / 3600) + " h ago";
+}
+
+function renderDeviceStatus(status) {
+  if (!status) return;
+  const rec = status.latest || {};
+  const online = !!status.online;
+
+  els.devStatus.textContent = online ? "Online" : "Offline";
+  els.devStatus.className = online ? "accent-good" : "accent-bad";
+  els.devDeviceId.textContent = status.device_id || "--";
+
+  const stamp = (rec.timestamp || "").slice(11, 19);
+  els.devLastSeen.textContent = stamp
+    ? formatAge(status.age_seconds) + " (" + stamp + " UTC)"
+    : "never";
+
+  els.devVoltage.textContent = rec.voltage_v != null ? Number(rec.voltage_v).toFixed(1) + " V" : "--";
+  els.devPower.textContent = rec.power_w != null ? Number(rec.power_w).toFixed(1) + " W" : "--";
+  els.devEnergy.textContent = rec.energy_kwh != null ? Number(rec.energy_kwh).toFixed(3) + " kWh" : "--";
+  els.devPf.textContent = rec.pf != null ? Number(rec.pf).toFixed(2) : "--";
+  els.devRelay.textContent = rec.relay_tripped ? "TRIPPED" : "Closed";
+  els.devRelay.className = rec.relay_tripped ? "accent-bad" : "accent-good";
 }
 
 function renderEvents(events) {
@@ -389,13 +431,14 @@ function renderEvents(events) {
 /* ----------------------- data loading ----------------------- */
 async function loadAll() {
   try {
-    const [latest, history, events, forecast, site, health] = await Promise.all([
+    const [latest, history, events, forecast, site, health, device] = await Promise.all([
       getJSON("/api/telemetry/latest"),
       getJSON("/api/telemetry/history?limit=60"),
       getJSON("/api/telemetry/events?limit=20"),
       getJSON("/api/forecast"),
       getJSON("/api/site"),
       getJSON("/api/health"),
+      getJSON("/api/device/status"),
     ]);
 
     state.latest = latest;
@@ -415,6 +458,7 @@ async function loadAll() {
     }
 
     renderMetrics(latest);
+    renderDeviceStatus(device);
     renderEvents(events);
     updateCapacityChart();
     updateThermalChart();
@@ -422,22 +466,15 @@ async function loadAll() {
     updateForecastChart(forecast);
     initMap(site);
 
-    // Scale simulator slider to the active line's real rating
-    if (state.activeRating) {
-      const max = Math.max(500, Math.ceil(state.activeRating * 1.5 / 50) * 50);
-      els.simCurrent.max = max;
-      if (parseFloat(els.simCurrent.value) > max) {
-        els.simCurrent.value = Math.round(max * 0.6);
-        els.simCurrentV.textContent = els.simCurrent.value + " A";
-      }
-    }
     if (state.lines && state.activeLineId) {
       renderLineMeta(state.activeLineId);
     }
 
-    els.liveBadge.classList.remove("offline");
-    els.liveText.textContent = "Live";
-    els.footerStatus.textContent = "Connected to backend";
+    els.liveBadge.classList.toggle("offline", !device.online);
+    els.liveText.textContent = device.online ? "ESP32 Live" : "ESP32 Offline";
+    els.footerStatus.textContent = device.online
+      ? "Receiving telemetry from ESP32"
+      : "Backend online - waiting for ESP32";
   } catch (err) {
     els.liveBadge.classList.add("offline");
     els.liveText.textContent = "Offline";
@@ -498,7 +535,7 @@ async function applyLine() {
     if (!res.ok) throw new Error("apply failed: " + res.status);
     await loadAll();
     setStatus("", "Active line set to: " + (els.lineSelect.selectedOptions[0] || {}).textContent);
-    els.dataSource.textContent = "simulator";
+    els.dataSource.textContent = "ESP32 sensor node (live)";
   } catch (err) {
     setStatus("", "Failed to apply line: " + err.message);
     els.btnLineApply.disabled = false;
@@ -601,59 +638,12 @@ async function askAssistant(query) {
   }
 }
 
-/* ----------------------- simulator ----------------------- */
-function simValues() {
-  return {
-    ambient_temp: parseFloat(els.simAmbient.value),
-    wind_speed: parseFloat(els.simWind.value),
-    current_load: parseFloat(els.simCurrent.value),
-    conductor_temp: 0, // engine will predict if not measured
-    humidity: 50,
-  };
-}
-
-async function sendSimReading() {
-  els.btnSend.disabled = true;
-  try {
-    const res = await fetch("/api/demo/telemetry", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(simValues()),
-    });
-    if (!res.ok) throw new Error("POST failed: " + res.status);
-    await loadAll();
-    els.dataSource.textContent = "simulator";
-  } catch (err) {
-    setStatus("", "Failed to send simulator reading: " + err.message);
-  } finally {
-    els.btnSend.disabled = false;
-  }
-}
-
-function toggleStream() {
-  if (state.streamTimer) {
-    clearInterval(state.streamTimer);
-    state.streamTimer = null;
-    els.btnStream.innerHTML = '<i class="fa-solid fa-play"></i> Auto Stream';
-    return;
-  }
-  state.streamTimer = setInterval(sendSimReading, STREAM_MS);
-  els.btnStream.innerHTML = '<i class="fa-solid fa-pause"></i> Stop Stream';
-}
-
 /* ----------------------- misc UI ----------------------- */
 function updateClock() {
   const d = new Date();
   els.clock.textContent =
     d.toLocaleTimeString("en-GB", { hour12: false }) + "  " +
     d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-}
-
-function bindSlider(labelEl, valueEl, unit, decimals) {
-  return function () {
-    const v = parseFloat(labelEl.value).toFixed(decimals);
-    valueEl.textContent = v + (unit || "");
-  };
 }
 
 /* ----------------------- national network section ----------------------- */
@@ -768,17 +758,6 @@ function init() {
   updateClock();
   setInterval(updateClock, 1000);
 
-  const syncAmbient = bindSlider(els.simAmbient, els.simAmbientV, " deg C", 1);
-  const syncWind = bindSlider(els.simWind, els.simWindV, " m/s", 1);
-  const syncCurrent = bindSlider(els.simCurrent, els.simCurrentV, " A", 1);
-  syncAmbient(); syncWind(); syncCurrent();
-
-  els.simAmbient.addEventListener("input", syncAmbient);
-  els.simWind.addEventListener("input", syncWind);
-  els.simCurrent.addEventListener("input", syncCurrent);
-
-  els.btnSend.addEventListener("click", sendSimReading);
-  els.btnStream.addEventListener("click", toggleStream);
   els.btnLineApply.addEventListener("click", applyLine);
 
   // AI assistant chat

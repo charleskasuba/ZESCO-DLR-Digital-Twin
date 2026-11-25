@@ -9,6 +9,15 @@ env/
 # Database files (recreated on start)
 data/*.db
 data/*.db-journal
+data/*.err
+data/*.out
+
+# Arduino build output
+gridemonitor/build/
+*.bin
+*.elf
+*.map
+*.hex
 
 # Env / secrets
 .env

@@ -157,6 +157,10 @@ body {
 .icon-dynamic { background: linear-gradient(135deg, #2ecc71, #1fa355); }
 .icon-temp { background: linear-gradient(135deg, #ff7849, #e63946); }
 .icon-sag { background: linear-gradient(135deg, #38bdf8, #2563eb); }
+.icon-volt { background: linear-gradient(135deg, #facc15, #f59e0b); }
+.icon-power { background: linear-gradient(135deg, #fb923c, #ea580c); }
+.icon-energy { background: linear-gradient(135deg, #34d399, #059669); }
+.icon-pf { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
 
 .metric-body { display: flex; flex-direction: column; min-width: 0; }
 .metric-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); }
